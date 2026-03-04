@@ -12,18 +12,21 @@ class LogHelper:
     @staticmethod
     def create_access_log(mac_address, user_id=None, unlock_method='unknown', 
                          success=True, failure_reason=None, image_path=None):
-        """创建访问日志"""
+        """创建访问日志
+        
+        注意：Log 模型不存储 success/failure_reason，这些信息已在业务逻辑中处理
+        仅记录实际发生的事件（即所有记录的都是已成功处理的事件）
+        """
         # 生成事件ID
         event_id = f"{unlock_method}_{int(time.time())}_{mac_address.replace(':', '')}"
         
+        # Log 模型只有这些字段：event_id, mac_address, user_id, unlock_method, snapshot_url, create_time
         log_entry = Log(
             event_id=event_id,
             mac_address=mac_address,
             user_id=user_id,
             unlock_method=unlock_method,
-            success=success,
-            failure_reason=failure_reason,
-            image_path=image_path
+            snapshot_url=image_path  # 如果有图片路径，保存到 snapshot_url
         )
         
         return db_helper.add_and_commit(log_entry)
