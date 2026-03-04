@@ -40,6 +40,11 @@ const DEFAULT_LOCAL_CONFIG = {
   
   // 第三方服务
   servers: {
+    // 快照获取方式：
+    // 方式1（推荐生产环境）：直接配置云端中继 URL，绕过后端代理以提升性能
+    //   video_stream: 'https://relay.example.com/snapshot'
+    // 方式2（当前配置）：通过后端 API 代理获取快照，支持权限检查和缓存
+    //   video_stream: 'https://dev.api.5i03.cn/api/device/snapshot'
     video_stream: 'https://dev.api.5i03.cn/api/device/snapshot',  // 通过后端 API 代理获取快照
     mqtt: {
       broker: 'mqtt.5i03.cn',

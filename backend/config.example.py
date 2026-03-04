@@ -26,24 +26,41 @@ class Config:
     MQTT_CLIENT_ID = os.getenv('MQTT_CLIENT_ID', 'access_control_backend')
     ENABLE_MQTT = os.getenv('ENABLE_MQTT', '1') in {'1', 'true', 'yes'}
     
-    # 实时视频流配置    # 注意：这里配置的是ESP32设备的实际IP和端口
-    # Flask后端会作为反向代理，转发ESP32的视频流给小程序
+    # 实时视频流配置
+    # 架构优先级：
+    # 1) 云端中继地址（CLOUD_RELAY_SNAPSHOT_URL）- 最优，推荐生产环境
+    # 2) 内存缓存（由 POST /api/hardware/snapshot ESP32推送）- 次优
+    # 3) 本地ESP32直连（DEVICE_SNAPSHOT_URL）- 备选，仅用于开发
     
-    # 方式1：单设备静态配置（适合开发测试）
+    # 方式1：云端中继配置（推荐用于生产环境）
+    # 如果配置此项，后端优先使用云端中继而非本地ESP32
+    # 示例值：
+    #   - 'https://relay.example.com/snapshot' （通过CDN加速）
+    #   - 'http://210.1.1.1:8080/snapshot' （内网穿透地址）
+    #   - 'http://nginx-relay:8080/snapshot' （Docker网络中的Nginx反向代理）
+    CLOUD_RELAY_SNAPSHOT_URL = os.getenv(
+        'CLOUD_RELAY_SNAPSHOT_URL',
+        ''  # 为空则不使用云端中继
+    )
+    
+    # 方式2：设备流地址（作为本地ESP32直连的备选）
     DEVICE_STREAM_URL_TEMPLATE = os.getenv(
         'DEVICE_STREAM_URL',
-        'http://192.168.3.161:81/stream'
+        'http://192.168.3.161:81/stream'  # 本地ESP32视频流地址（仅供开发测试）
     )
     
+    # 快照URL（在云端中继和缓存都不可用时使用）
     DEVICE_SNAPSHOT_URL_TEMPLATE = os.getenv(
         'DEVICE_SNAPSHOT_URL',
-        'http://192.168.3.161:81/stream?action=snapshot'
+        'http://192.168.3.161:81/stream?action=snapshot'  # 本地ESP32快照地址（仅供开发测试）
     )
     
-    # 方式2：多设备动态配置（生产环境推荐）
-    # 在Device表中添加stream_url字段，每个设备配置独立的视频流地址
-    # 示例SQL：ALTER TABLE devices ADD COLUMN stream_url VARCHAR(255);
-    # 然后在代码中使用：device.stream_url
+    # 小程序客户端使用的快照URL
+    # 生产环境建议直接配置为云端中继地址以提升性能
+    CLIENT_SNAPSHOT_URL_TEMPLATE = os.getenv(
+        'CLIENT_SNAPSHOT_URL',
+        '/api/device/snapshot'  # 默认通过后端代理，支持权限检查
+    )
     
     # 微信小程序配置    WECHAT_APP_ID = os.getenv('WECHAT_APP_ID', '')
     WECHAT_APP_SECRET = os.getenv('WECHAT_APP_SECRET', '')

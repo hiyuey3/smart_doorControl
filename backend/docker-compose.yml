@@ -20,6 +20,12 @@ services:
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-me}
       - MQTT_BROKER=mqtt.5i03.cn
       - MQTT_PORT=1883
+      # 云端中继视频配置（可选）
+      # 配置此项以使用云端中继地址而非本地ESP32
+      # 示例：'https://relay.example.com/snapshot' 或 'http://210.1.1.1:8080/snapshot'
+      - CLOUD_RELAY_SNAPSHOT_URL=${CLOUD_RELAY_SNAPSHOT_URL:-}
+      # 本地ESP32地址（云端中继不可用时的备选方案）
+      - DEVICE_SNAPSHOT_URL=${DEVICE_SNAPSHOT_URL:-http://192.168.3.161:81/stream?action=snapshot}
     networks:
       - doorcontrol_network
     healthcheck:

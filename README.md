@@ -340,6 +340,138 @@ location / {
 
 ---
 
+## 云端中继视频配置（2026-03-05 新增）
+
+### 功能概述
+系统支持通过**三层优先级架构**获取设备快照，以适应不同的部署环境：
+
+| 优先级 | 来源 | 说明 | 适用场景 |
+|--------|------|------|--------|
+| 1️⃣ **一级（推荐）** | 云端中继地址 | 通过 `CLOUD_RELAY_SNAPSHOT_URL` 配置的公网地址 | 生产环境，高可用 |
+| 2️⃣ **二级** | 内存缓存 | ESP32 主动推送到后端的最新快照 | MQTT 推送模式 |
+| 3️⃣ **三级（备选）** | 本地ESP32 | 直连 `DEVICE_SNAPSHOT_URL` 的本地地址 | 开发测试，局域网环境 |
+
+### 配置方式
+
+#### 方式 1：直接配置云端中继（推荐生产使用）
+
+**编辑 `docker-compose.yml`**：
+```yaml
+services:
+  backend:
+    environment:
+      # 云端中继地址（优先级最高）
+      - CLOUD_RELAY_SNAPSHOT_URL=https://relay.example.com/snapshot
+      # 或使用内网穿透工具暴露的地址
+      - CLOUD_RELAY_SNAPSHOT_URL=http://210.1.1.1:8080/snapshot
+      # 或使用 Docker 网络中的另一服务
+      - CLOUD_RELAY_SNAPSHOT_URL=http://nginx-relay:8080/snapshot
+```
+
+**优点**：
+- 快照不经过后端代理，性能最优
+- 支持CDN加速和高并发
+- 自动故障转移（如果中继不可用，自动回退到缓存/本地）
+
+#### 方式 2：启用 ESP32 MQTT 推送模式
+
+**后端已支持**：`POST /api/hardware/snapshot`
+
+**ESP32 端示例代码**：
+```cpp
+void sendSnapshot() {
+  // 捕获快照（伪代码）
+  camera_fb_t* fb = esp_camera_fb_get();
+  
+  // POST 到后端
+  HTTPClient http;
+  http.begin("https://dev.api.5i03.cn/api/hardware/snapshot");
+  http.addHeader("Content-Type", "image/jpeg");
+  http.addHeader("Device-Secret", "your-device-secret");
+  
+  int httpCode = http.sendRequest("POST", fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+  
+  // 每 2 秒推送一次
+}
+```
+
+**优点**：
+- 快照存储在后端内存中，无需每次重新获取
+- 支持多个小程序客户端共享同一快照，减少 ESP32 负载
+- 响应延迟低（< 100ms）
+
+#### 方式 3：本地直连（开发测试）
+
+**编辑 `docker-compose.yml`**：
+```yaml
+services:
+  backend:
+    environment:
+      # 本地 ESP32 地址（仅开发环境）
+      - DEVICE_SNAPSHOT_URL=http://192.168.3.161:81/stream?action=snapshot
+```
+
+### 故障排查
+
+#### 快照显示灰色（加载失败）
+
+**症状**：小程序主页显示灰色视频区域，控制台输出 `placeholder-timeout`
+
+**检查清单**：
+```bash
+# 1. 测试云端中继是否可访问
+curl -v https://relay.example.com/snapshot
+
+# 2. 测试后端快照接口（需要登录 Token）
+curl -v -H "Authorization: Bearer YOUR_TOKEN" \
+  https://dev.api.5i03.cn/api/device/snapshot/AABBCCDDEEFF
+
+# 3. 查看后端日志中的 [Snapshot] 标记
+docker-compose logs backend | grep Snapshot
+
+# 预期输出示例：
+# [Snapshot] 尝试云端中继
+# [Snapshot] Cache HIT for AA:BB:CC:DD:EE:FF (age: 12.3s)
+# 或
+# [Snapshot] Cache MISS for AA:BB:CC:DD:EE:FF
+# [Snapshot] 代理本地 ESP32
+```
+
+#### 后端日志输出说明
+
+| 日志信息 | 含义 | 对应来源 |
+|--------|------|--------|
+| `[Snapshot] Cache HIT` | 使用缓存中的快照 | 优先级2 |
+| `[Snapshot] Cache MISS` | 缓存已过期 | - |
+| `[Snapshot] Got cloud relay` | 使用云端中继 | 优先级1 |
+| `[Snapshot] Requesting local ESP32` | 回退到本地 | 优先级3 |
+| `[Snapshot] TIMEOUT` | 请求超时 | 返回占位符 |
+| `X-Frame-Source: cloud-relay` | HTTP 响应头指示来源 | - |
+| `X-Frame-Source: cache` | HTTP 响应头指示来源 | - |
+| `X-Frame-Source: placeholder-*` | HTTP 响应头指示来源 | - |
+
+### 性能建议
+
+**生产环境推荐配置**：
+```yaml
+# docker-compose.yml
+services:
+  backend:
+    environment:
+      # 使用 CDN 加速或高速内网中继
+      - CLOUD_RELAY_SNAPSHOT_URL=https://cdn.example.com/snapshot
+      # 本地 ESP32 仅作备选（可选）
+      - DEVICE_SNAPSHOT_URL=http://192.168.3.161:81/stream?action=snapshot
+```
+
+**缓存策略**：
+- 快照缓存 TTL：5 分钟
+- 小程序刷新间隔：1~3 秒（建议）
+- ESP32 推送频率：每 2 秒推送一次
+
+---
+
 ## 权限审批功能（2026-03-05 新增）
 
 ### 功能概述

@@ -1460,12 +1460,12 @@ def proxy_device_stream(mac_address):
 @token_required
 def proxy_device_snapshot(mac_address):
     """
-    实时快照获取接口
+    实时快照获取接口 - 支持三层快照源优先级
     
-    架构：
-    - 优先从内存缓存 device_frames 获取（由 POST /api/device/upload_snapshot 推送）
-    - 缓存miss时，回退到直接从 ESP32 代理
-    - ESP32 超时或离线时，返回占位符 JPEG 而非 503
+    优先级架构：
+    1. 云端中继（最优，高可用性）：CLOUD_RELAY_SNAPSHOT_URL 配置
+    2. 内存缓存 device_frames（次优，由ESP32主动推送）
+    3. 本地ESP32直连（备选，用于开发测试）
     
     请求示例：
     GET /api/device/snapshot/ACA704260CFC
@@ -1492,7 +1492,23 @@ def proxy_device_snapshot(mac_address):
     if error or not device:
         return response_helper.not_found('设备不存在', 'DEVICE_NOT_FOUND')
     
-    # 3. 尝试从内存字典获取最新的快照
+    # 优先级1：尝试云端中继快照获取（推荐方案）
+    cloud_relay_url = current_app.config.get('CLOUD_RELAY_SNAPSHOT_URL')
+    if cloud_relay_url:
+        try:
+            print(f'[Snapshot] Trying cloud relay from {cloud_relay_url}')
+            response = requests.get(cloud_relay_url, timeout=3)
+            response.raise_for_status()
+            print(f'[Snapshot] Got cloud relay snapshot ({len(response.content)} bytes)')
+            return Response(
+                response.content,
+                content_type='image/jpeg',
+                headers={'X-Frame-Source': 'cloud-relay'}
+            )
+        except Exception as e:
+            print(f'[Snapshot] Cloud relay failed, falling back to cache/local: {e}')
+    
+    # 优先级2：尝试从内存缓存获取最新的快照（由ESP32主动推送）
     if mac_standard in device_frames:
         frame_data = device_frames[mac_standard]
         current_time = time()
@@ -1514,8 +1530,8 @@ def proxy_device_snapshot(mac_address):
             # 快照过期，从字典中移除
             del device_frames[mac_standard]
     
-    # 4. 缓存miss - 回退到直接从 ESP32 代理
-    print(f'[Snapshot] Cache MISS for {mac_standard}, falling back to ESP32')
+    # 优先级3：缓存miss - 回退到本地ESP32直连（降级方案）
+    print(f'[Snapshot] Cache MISS for {mac_standard}, falling back to local ESP32')
     
     if device.status != 'online':
         print(f'[Snapshot] Device offline, returning placeholder for {mac_standard}')
@@ -1532,16 +1548,16 @@ def proxy_device_snapshot(mac_address):
     )
     
     try:
-        # 5. 代理 ESP32 快照（2秒超时）
-        print(f'[Snapshot] Requesting ESP32 from {snapshot_url}')
+        # 从本地ESP32代理快照（2秒超时）
+        print(f'[Snapshot] Requesting local ESP32 from {snapshot_url}')
         response = requests.get(snapshot_url, timeout=2)
         response.raise_for_status()
         
-        print(f'[Snapshot] Got ESP32 snapshot ({len(response.content)} bytes)')
+        print(f'[Snapshot] Got local ESP32 snapshot ({len(response.content)} bytes)')
         return Response(
             response.content,
             content_type='image/jpeg',
-            headers={'X-Frame-Source': 'esp32-proxy'}
+            headers={'X-Frame-Source': 'esp32-local'}
         )
         
     except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout) as e:
@@ -1562,9 +1578,6 @@ def proxy_device_snapshot(mac_address):
             content_type='image/jpeg',
             headers={'X-Frame-Source': 'placeholder-error'}
         )
-        print(f'[Snapshot] ERROR: ESP32 proxy error for {mac_standard}: {e}')
-        current_app.logger.error(f'Snapshot proxy error: {e}')
-        return response_helper.error('获取快照失败', 'SNAPSHOT_FAILED', 503)
 
 
 

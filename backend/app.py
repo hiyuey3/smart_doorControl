@@ -76,14 +76,33 @@ def create_app():
     app.config['MQTT_CLIENT_ID'] = os.getenv('MQTT_CLIENT_ID', 'access_control_backend')
     app.config['ENABLE_MQTT'] = os.getenv('ENABLE_MQTT', '1') in {'1', 'true', 'yes'}
 
-    # 实时视频流代理配置（纯转发，不存数据库）
+    # 实时视频流代理配置 - 支持三层优先级
+    # 优先级1：云端中继地址（推荐用于生产环境）
+    # 优先级2：设备数据库配置的stream_url字段
+    # 优先级3：本地ESP32直连地址（仅用于开发调试）
     app.config['DEVICE_STREAM_URL_TEMPLATE'] = os.getenv(
         'DEVICE_STREAM_URL',
-        'http://192.168.3.161:81/stream'  # ESP32视频流地址
+        'http://192.168.3.161:81/stream'  # 本地ESP32视频流地址（降级方案）
     )
+    
+    # 云端中继视频快照地址（推荐配置此项以替代本地ESP32）
+    # 示例：'https://relay.example.com/snapshot' 或 'http://210.1.1.1:8080/snapshot'
+    app.config['CLOUD_RELAY_SNAPSHOT_URL'] = os.getenv(
+        'CLOUD_RELAY_SNAPSHOT_URL',
+        ''  # 如配置此项，则优先使用云端中继而非本地ESP32
+    )
+    
+    # 快照URL模板（作为降级方案，仅在云端中继不可用时使用）
     app.config['DEVICE_SNAPSHOT_URL_TEMPLATE'] = os.getenv(
         'DEVICE_SNAPSHOT_URL',
-        'http://192.168.3.161:81/stream?action=snapshot'  # ESP32快照地址
+        'http://192.168.3.161:81/stream?action=snapshot'  # 本地ESP32快照地址
+    )
+    
+    # 小程序前端使用的快照访问地址
+    # 生产环境推荐直接配置为云端中继地址（绕过后端代理以提升性能）
+    app.config['CLIENT_SNAPSHOT_URL_TEMPLATE'] = os.getenv(
+        'CLIENT_SNAPSHOT_URL',
+        '/api/device/snapshot'  # 默认通过后端代理，支持权限检查
     )
 
     db.init_app(app)
