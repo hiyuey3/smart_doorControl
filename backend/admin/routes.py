@@ -178,6 +178,7 @@ def add_device():
             mac_address=data.get('mac_address'),
             location=data.get('location'),
             room_number=data.get('room_number'),
+            ip_address=data.get('ip_address'),
             status='offline'  # 新设备默认离线
         )
         
@@ -204,6 +205,7 @@ def manage_device(device_id):
             device.name = request.form.get('name')
             device.location = request.form.get('location')
             device.room_number = request.form.get('room_number')
+            device.ip_address = request.form.get('ip_address')
             db.session.commit()
         
         elif action == 'delete':

@@ -22,6 +22,12 @@ class Device(SerializerMixin, db.Model):
     
     room_number: Mapped[Optional[str]] = mapped_column(db.String(10))
     """房间号 (旧: db.Column(db.String(10), nullable=True))"""
+    
+    location: Mapped[Optional[str]] = mapped_column(db.String(100))
+    """设备位置描述 (如：一楼东门、二楼实验室等)"""
+    
+    ip_address: Mapped[Optional[str]] = mapped_column(db.String(15))
+    """ESP32 IP地址 (用于本地直连快照，优先级3) - 例如：192.168.3.161"""
 
     # 状态监控
     status: Mapped[str] = mapped_column(db.Enum('online', 'offline'), default='offline')

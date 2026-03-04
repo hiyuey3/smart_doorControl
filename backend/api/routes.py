@@ -1542,10 +1542,10 @@ def proxy_device_snapshot(mac_address):
             headers={'X-Frame-Source': 'placeholder-offline'}
         )
     
-    snapshot_url = current_app.config.get(
-        'DEVICE_SNAPSHOT_URL_TEMPLATE', 
-        'http://192.168.3.161:81/stream?action=snapshot'
-    )
+    # 优先从数据库获取设备的IP地址，否则使用默认配置
+    device_ip = device.ip_address or '192.168.3.161'
+    snapshot_url = f'http://{device_ip}:81/stream?action=snapshot'
+    print(f'[Snapshot] Using device IP: {device_ip}')
     
     try:
         # 从本地ESP32代理快照（2秒超时）
@@ -1553,11 +1553,14 @@ def proxy_device_snapshot(mac_address):
         response = requests.get(snapshot_url, timeout=2)
         response.raise_for_status()
         
-        print(f'[Snapshot] Got local ESP32 snapshot ({len(response.content)} bytes)')
+        print(f'[Snapshot] Got local ESP32 snapshot from {device_ip} ({len(response.content)} bytes)')
         return Response(
             response.content,
             content_type='image/jpeg',
-            headers={'X-Frame-Source': 'esp32-local'}
+            headers={
+                'X-Frame-Source': 'esp32-local',
+                'X-Device-IP': device_ip
+            }
         )
         
     except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout) as e:

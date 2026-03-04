@@ -20,11 +20,11 @@ const int mqtt_port = 1883;
 #define UPLOAD_ENDPOINT "/api/device/upload_snapshot"
 
 #define DEVICE_SECRET "device_secret_key_v1"
-#define UPLOAD_INTERVAL_MS 1000  // 1秒上传一次（从500ms改为1s，减轻负担）
+#define UPLOAD_INTERVAL_MS 1000  // 1秒上传一次
 
 #define LED_BUILT_IN 2
-#define STM_RX_PIN 43   // 比如改到 43
-#define STM_TX_PIN 44   // 比如改到 44
+#define STM_RX_PIN 21   
+#define STM_TX_PIN 4  
 HardwareSerial SerialSTM(1);
 
 // Globals

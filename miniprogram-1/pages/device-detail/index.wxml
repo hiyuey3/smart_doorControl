@@ -28,9 +28,21 @@
         <text class="offline-text">设备离线</text>
       </view>
 
-      <!-- 视频区域右下角 - 刷新快照悬浮按钮 -->
-      <view class="video-refresh-btn" bindtap="handleStreamRefresh" style="opacity: {{isSnapshotLoading ? 0.6 : 1}};">
-        <text class="refresh-icon">刷新</text>
+      <!-- 视频区域右下角 - 快照源切换信息 -->
+      <view class="snapshot-source-info">
+        <text class="source-label">源: {{snapshotSource === 'local' ? '本地' : '代理'}}</text>
+      </view>
+
+      <!-- 视频区域右下角 - 刷新快照悬浮按钮 + 切换源按钮 -->
+      <view class="video-control-buttons">
+        <!-- 切换源按钮 -->
+        <view class="video-btn source-toggle-btn" bindtap="toggleSnapshotSource" wx:if="{{device.ip_address}}">
+          <text class="btn-icon">源</text>
+        </view>
+        <!-- 刷新按钮 -->
+        <view class="video-refresh-btn" bindtap="handleStreamRefresh" style="opacity: {{isSnapshotLoading ? 0.6 : 1}};">
+          <text class="refresh-icon">刷新</text>
+        </view>
       </view>
     </view>
   </view>

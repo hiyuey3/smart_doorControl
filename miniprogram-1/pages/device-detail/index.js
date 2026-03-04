@@ -17,12 +17,14 @@ Page({
       mac_address: '',
       name: '',
       status: 'online',
-      created_at: ''
+      created_at: '',
+      ip_address: ''
     },
     
     // 视频相关（HTTP 快照模式）
     videoFrame: '',  // 快照 URL (实时或占位符)
     isSnapshotLoading: false,
+    snapshotSource: 'proxy',  // 'proxy'（后端代理）或 'local'（本地ESP32直连）
     
     // 设备信息
     deviceInfo: {
@@ -107,7 +109,8 @@ Page({
           mac_address: device.mac_address,
           name: device.name || '未命名设备',
           status: device.status || 'online',
-          created_at: device.created_at || '--'
+          created_at: device.created_at || '--',
+          ip_address: device.ip_address || ''
         }
       });
       
@@ -156,22 +159,26 @@ Page({
    */
   
   loadDeviceSnapshot(mac_address) {
-    console.log('[Snapshot] Loading device snapshot');
+    console.log('[Snapshot] Loading device snapshot, source:', this.data.snapshotSource);
     
     const apiUrl = envConfig.getApiUrl();
     const token = wx.getStorageSync('token');
     const mac_clean = mac_address.replace(/:/g, '');
+    const device = this.data.device;
     
-    const snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
+    let snapshotUrl;
+    if (this.data.snapshotSource === 'local' && device.ip_address) {
+      snapshotUrl = `http://${device.ip_address}:81/stream?action=snapshot`;
+      console.log('[Snapshot] Using local ESP32');
+    } else {
+      snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
+      console.log('[Snapshot] Using backend proxy');
+    }
     
-    // 从后端代理获取快照或占位符
-    // - 若设备在线：返回实时快照
-    // - 若设备离线或超时：返回占位符 JPEG
-    // - 前端统一处理为图像显示
     wx.request({
       url: snapshotUrl,
       method: 'GET',
-      header: {
+      header: this.data.snapshotSource === 'local' ? {} : {
         'Authorization': 'Bearer ' + token
       },
       responseType: 'arraybuffer',
@@ -183,9 +190,9 @@ Page({
           const base64 = wx.arrayBufferToBase64(arrayBuffer);
           const imageUrl = 'data:image/jpeg;base64,' + base64;
           
-          // 获取图像来源（缓存/实时/占位符）
-          const source = res.header['x-frame-source'] || 'unknown';
-          console.log(`[Snapshot] Loaded from source: ${source}`);
+          const source = res.header['x-frame-source'] || 
+                        (this.data.snapshotSource === 'local' ? 'esp32-direct' : 'proxy-source');
+          console.log(`[Snapshot] Loaded from: ${source}`);
           
           this.setData({
             videoFrame: imageUrl,
@@ -403,6 +410,35 @@ Page({
       icon: 'none',
       duration: 2000
     });
+  },
+
+  /**
+   * 切换快照源（代理 <-> 本地ESP32直连）
+   */
+  toggleSnapshotSource() {
+    const device = this.data.device;
+
+    if (!device.ip_address) {
+      wx.showToast({
+        title: '设备未配置IP地址',
+        icon: 'none',
+        duration: 2000
+      });
+      return;
+    }
+
+    const newSource = this.data.snapshotSource === 'proxy' ? 'local' : 'proxy';
+    this.setData({
+      snapshotSource: newSource
+    });
+
+    wx.showToast({
+      title: `已切换至${newSource === 'local' ? '本地' : '代理'}源`,
+      icon: 'success',
+      duration: 1500
+    });
+
+    this.loadDeviceSnapshot(device.mac_address);
   },
 
   /**

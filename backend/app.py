@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
+from sqlalchemy import inspect, text
 import os
 from threading import Lock
 
@@ -16,6 +17,31 @@ db = SQLAlchemy()
 # 用途：ESP32 主动推送最新快照到此字典，前端定期从此字典拉取
 device_frames = {}
 device_frames_lock = Lock()  # 线程安全的写入锁
+
+
+def _ensure_device_columns(app):
+    """为历史数据库补齐 devices 表缺失字段。"""
+    with app.app_context():
+        inspector = inspect(db.engine)
+        if 'devices' not in inspector.get_table_names():
+            return
+
+        existing_columns = {col['name'] for col in inspector.get_columns('devices')}
+        ddl_statements = []
+
+        if 'location' not in existing_columns:
+            ddl_statements.append("ALTER TABLE devices ADD COLUMN location VARCHAR(100)")
+        if 'ip_address' not in existing_columns:
+            ddl_statements.append("ALTER TABLE devices ADD COLUMN ip_address VARCHAR(15)")
+
+        for ddl in ddl_statements:
+            try:
+                db.session.execute(text(ddl))
+                db.session.commit()
+                print(f"[DB] Applied migration: {ddl}")
+            except Exception as migration_error:
+                db.session.rollback()
+                print(f"[DB] Migration skipped/failed: {migration_error}")
 
 
 def create_app():
@@ -113,6 +139,7 @@ def create_app():
     with app.app_context():
         # 安全的表初始化：仅创建不存在的表，不删除现有数据
         db.create_all()
+        _ensure_device_columns(app)
 
         # 创建默认管理员（仅在不存在时创建）
         admin = Admin.query.filter_by(username='admin').first()

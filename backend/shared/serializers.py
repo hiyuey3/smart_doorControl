@@ -19,6 +19,8 @@ def serialize_device(device):
     return {
         'mac_address': device.mac_address,
         'name': device.name,
+        'location': device.location,
+        'ip_address': device.ip_address,
         'room_number': device.room_number,
         'status': device.status,
         'last_heartbeat': device.last_heartbeat.isoformat() if device.last_heartbeat else None,
