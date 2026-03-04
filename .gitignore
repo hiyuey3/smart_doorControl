@@ -3,6 +3,8 @@
 # ---- AI / Machine Learning related files (do not commit) ----
 # Model files and checkpoints
 models/
+# 但保留 core/models（数据模型定义）
+!core/models/
 .github/
 checkpoints/
 *.ckpt
@@ -53,6 +55,12 @@ credentials.json
 *.log
 *.log.*
 logs/
+
+# Database files
+*.db
+*.db.backup_*
+instance/*.db
+instance/*.db.backup_*
 
 
 # Misc

@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 from threading import Lock
 
@@ -25,6 +26,19 @@ def create_app():
         template_folder=template_folder,
         static_folder='static', 
         static_url_path='/static'
+    )
+
+    # 🔧 反向代理支持 - 修复 redirect 重定向到 127.0.0.1 的问题
+    # x_for=1: 信任 1 层代理的 X-Forwarded-For
+    # x_proto=1: 信任 X-Forwarded-Proto（识别 HTTPS）
+    # x_host=1: 信任 X-Forwarded-Host（识别真实域名）
+    # x_prefix=1: 信任 X-Forwarded-Prefix（识别 URL 前缀）
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, 
+        x_for=1, 
+        x_proto=1, 
+        x_host=1, 
+        x_prefix=1
     )
 
     # JSON 支持中文

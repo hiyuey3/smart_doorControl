@@ -260,6 +260,60 @@ miniprogram-1/
 
 ---
 
+## 🌐 反向代理配置（2026-03-05 修复）
+
+### 问题症状
+在 Nginx 反向代理后，访问 `/admin/login` 登录成功后会重定向到 `http://127.0.0.1/admin`，而不是真实的域名。
+
+### 根本原因
+Flask 的 `redirect()` 函数在生成绝对 URL 时，需要知道真实的请求来源（协议、域名、端口）。当应用在反向代理后面时，Flask 默认只能看到代理服务器的内部地址（如 `backend:5000` 或 `127.0.0.1:5000`），不知道外部访问的真实域名。
+
+### 解决方案
+
+#### 1️⃣ **后端配置 ProxyFix 中间件**（✅ 已修复）
+在 `backend/app.py` 中添加：
+```python
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+def create_app():
+    app = Flask(__name__)
+    
+    # 信任反向代理传递的头部信息
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, 
+        x_for=1,        # 信任 X-Forwarded-For
+        x_proto=1,      # 信任 X-Forwarded-Proto (识别 HTTPS)
+        x_host=1,       # 信任 X-Forwarded-Host (识别真实域名)
+        x_prefix=1      # 信任 X-Forwarded-Prefix
+    )
+```
+
+#### 2️⃣ **Nginx 配置正确的代理头部**（✅ 已配置）
+在 `backend/nginx.conf` 中确保：
+```nginx
+location / {
+    proxy_pass http://backend:5000;
+    proxy_set_header Host $host;                           # 传递真实域名
+    proxy_set_header X-Real-IP $remote_addr;               # 传递客户端 IP
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;            # 传递协议 (http/https)
+}
+```
+
+### 验证方法
+1. 重启后端服务：`docker-compose restart backend`（或 `docker-compose up -d --build`）
+2. 访问 `https://dev.api.5i03.cn/admin/login`
+3. 登录成功后，URL 应该保持为 `https://dev.api.5i03.cn/admin`，而不是跳转到 `127.0.0.1`
+
+### 技术细节
+- **ProxyFix** 会解析 Nginx 传递的 `X-Forwarded-*` 头部，让 Flask 的 `request.url`、`request.host`、`url_for()` 等函数返回正确的外部 URL
+- **参数说明**：
+  - `x_for=1`：表示信任 1 层代理（如果有多层代理需要增加）
+  - `x_proto=1`：识别 HTTPS 协议，避免 HTTPS→HTTP 降级
+  - `x_host=1`：识别真实域名
+
+---
+
 ## 📊 最终评分
 
 | 维度 | 评分 | 说明 |
