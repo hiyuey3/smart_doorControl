@@ -153,7 +153,7 @@ void business_command_router(String json_msg) {
   else if (strcmp(cmd, "alarm") == 0) send_hex_to_stm32(0x04, 0x01);
   else if (strcmp(cmd, "query_status") == 0) send_hex_to_stm32(0x05, 0x00);
   else if (strcmp(cmd, "reboot") == 0) ESP.restart();
-  else if (strcmp(cmd, "test_led") == 0) {
+  else if (strcmp(cmd, "led_control") == 0) {
     static bool led_state = false;
     led_state = !led_state;
     digitalWrite(LED_BUILT_IN, led_state ? HIGH : LOW);
