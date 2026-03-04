@@ -17,10 +17,10 @@ const int mqtt_port = 1883;
 
 #define BACKEND_HOST "192.168.3.10"
 #define BACKEND_PORT 5000
-#define UPLOAD_ENDPOINT "/api/hardware/snapshot"
+#define UPLOAD_ENDPOINT "/api/device/upload_snapshot"
 
 #define DEVICE_SECRET "device_secret_key_v1"
-#define UPLOAD_INTERVAL_MS 500
+#define UPLOAD_INTERVAL_MS 1000  // 1秒上传一次（从500ms改为1s，减轻负担）
 
 #define LED_BUILT_IN 2
 #define STM_RX_PIN 16
@@ -240,13 +240,15 @@ void poll_frame_upload() {
   HTTPClient http;
   http.begin(url);
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("Device-Secret", DEVICE_SECRET);
-  http.addHeader("X-Device-MAC", WiFi.macAddress());
+  http.addHeader("X-Device-MAC", WiFi.macAddress());  // 格式：AA:BB:CC:DD:EE:FF
+  http.addHeader("X-Device-Secret", DEVICE_SECRET);
 
   int http_code = http.POST(fb->buf, fb->len);
   if (http_code == 200) {
     frame_upload_state.total_uploads++;
-  }
+    Serial.printf("[Upload] OK: Snapshot uploaded (%d bytes, total: %lu)\n", fb->len, frame_upload_state.total_uploads);
+  } else {
+    Serial.printf("[Upload] FAIL: HTTP %d, retries: %d\n", http_code, frame_upload_state.consecutive_failures++);
 
   esp_camera_fb_return(fb);
   http.end();
