@@ -23,8 +23,8 @@ const int mqtt_port = 1883;
 #define UPLOAD_INTERVAL_MS 1000  // 1秒上传一次（从500ms改为1s，减轻负担）
 
 #define LED_BUILT_IN 2
-#define STM_RX_PIN 16
-#define STM_TX_PIN 17
+#define STM_RX_PIN 43   // 比如改到 43
+#define STM_TX_PIN 44   // 比如改到 44
 HardwareSerial SerialSTM(1);
 
 // Globals
@@ -209,11 +209,13 @@ void mqtt_task(void* pv) {
         String mac = WiFi.macAddress();
         mac.replace(":", "");
         String lwt_topic = "/iot/device/" + mac + "/status";
-        String lwt_payload = "{\"status\":\"offline\"}";
+        String local_ip = WiFi.localIP().toString();
+        String lwt_payload = "{\"status\":\"offline\",\"ip_address\":\"" + local_ip + "\"}";
 
         if (mqttClient.connect(mqtt_client_id.c_str(), lwt_topic.c_str(), 1, true, lwt_payload.c_str())) {
           Serial.println("MQTT Connected");
-          mqttClient.publish(lwt_topic.c_str(), "{\"status\":\"online\"}", true);
+          String online_payload = "{\"status\":\"online\",\"ip_address\":\"" + local_ip + "\"}";
+          mqttClient.publish(lwt_topic.c_str(), online_payload.c_str(), true);
           mqttClient.subscribe(topic_sub.c_str());
         } else {
           vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -315,6 +317,7 @@ void loop() {
       doc["type"] = "heartbeat";
       doc["uptime"] = millis() / 1000; // 设备运行时间（秒）
       doc["count"] = ++heartbeat_count;
+      doc["ip_address"] = WiFi.localIP().toString();
       
       // 添加 UTC 时间戳（如果时间已同步）
       struct tm timeinfo;

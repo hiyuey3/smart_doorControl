@@ -95,6 +95,14 @@ def _handle_message_impl(client, userdata, message):
 
         print(f"Extracted MAC address: {mac_address}")
 
+        # 从设备上报中提取IP地址（支持多种字段）
+        reported_ip = (
+            payload.get('ip_address')
+            or payload.get('ip')
+            or payload.get('local_ip')
+            or (payload.get('network') or {}).get('ip')
+        )
+
         # 处理设备状态消息 (掉电/离线)
         if '/status' in topic:
             device_status = payload.get('status', 'unknown')
@@ -117,6 +125,8 @@ def _handle_message_impl(client, userdata, message):
             # 更新设备在线状态
             device.status = 'online'
             device.last_heartbeat = datetime.utcnow()
+            if reported_ip:
+                device.ip_address = reported_ip
             # 如果设备刚上线，发布 retained online 消息覆盖 LWT
             if was_offline:
                 publish_device_status(mac_address, 'online', retain=True)
@@ -135,7 +145,8 @@ def _handle_message_impl(client, userdata, message):
                 print(f"[MQTT] Heartbeat from {mac_address} | "
                       f"Device time: {device_timestamp} | "
                       f"Server time: {server_timestamp} | "
-                      f"Last heartbeat: {device.last_heartbeat}")
+                      f"Last heartbeat: {device.last_heartbeat} | "
+                      f"IP: {device.ip_address or 'N/A'}")
 
         # 硬件上报（STM32串口数据）
         elif msg_type == 'hw_report':
