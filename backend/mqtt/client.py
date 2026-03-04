@@ -112,9 +112,15 @@ def _handle_message_impl(client, userdata, message):
         if not device:
             print(f"Device not found: {mac_address}, skipping status update")
         else:
+            # 检查设备是否从离线变为在线
+            was_offline = device.status != 'online'
             # 更新设备在线状态
             device.status = 'online'
             device.last_heartbeat = datetime.utcnow()
+            # 如果设备刚上线，发布 retained online 消息覆盖 LWT
+            if was_offline:
+                publish_device_status(mac_address, 'online', retain=True)
+                print(f"[MQTT] Published retained 'online' status for {mac_address}")
 
         # 处理不同类型的消息
         msg_type = payload.get('type', 'unknown')
@@ -215,6 +221,62 @@ def publish_command(mac_address, command):
         return True
     except Exception as e:
         msg = f"[MQTT] FAIL: Publish error: {str(e)}"
+        print(msg)
+        try:
+            current_app.logger.error(msg)
+        except:
+            pass
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def publish_device_status(mac_address, status, retain=True):
+    """
+    发布设备状态消息（支持 retained 标志）
+    
+    Args:
+        mac_address: 设备 MAC 地址（格式：AA:BB:CC:DD:EE:FF）
+        status: 状态字符串（'online' 或 'offline'）
+        retain: 是否为 retained 消息（默认 True）
+    
+    用途：
+        - 设备上线时发布 retained "online" 消息覆盖 LWT
+        - 设备正常断开时发布 retained "offline" 消息
+        - retained 消息会被 broker 保存，新订阅者立即收到最新状态
+    """
+    try:
+        # 移除 MAC 地址中的冒号，转换为 ESP32 格式
+        mac_clean = mac_address.replace(':', '').replace('-', '').upper()
+        
+        # 发布到设备状态主题
+        topic = f"/iot/device/{mac_clean}/status"
+        payload = json.dumps({
+            'status': status,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        # 检查 MQTT 连接状态
+        if not mqtt.client or not mqtt.client.is_connected():
+            msg = f"[MQTT] FAIL: Not connected! Cannot publish status to {topic}"
+            print(msg)
+            try:
+                current_app.logger.error(msg)
+            except:
+                pass
+            return False
+        
+        # 发布消息（QoS=1, retain 根据参数决定）
+        mqtt.publish(topic, payload, qos=1, retain=retain)
+        msg = f"[MQTT] OK: Published {'retained' if retain else 'non-retained'} status '{status}' to {topic}"
+        print(msg)
+        try:
+            current_app.logger.info(msg)
+        except:
+            pass
+        return True
+    except Exception as e:
+        msg = f"[MQTT] FAIL: publish_device_status error: {str(e)}"
         print(msg)
         try:
             current_app.logger.error(msg)
