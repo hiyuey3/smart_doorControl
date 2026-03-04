@@ -1,0 +1,69 @@
+<!-- pages/login/index.wxml -->
+<!-- 身份鉴权页 - 专业极简风格 -->
+<view class="login-container">
+  <view class="header">
+    <text class="title">智慧校园控制系统</text>
+    <text class="subtitle">欢迎使用</text>
+  </view>
+
+  <!-- 账号密码登录 -->
+  <view class="login-section">
+    <view class="form-container">
+      <view class="form-item">
+        <text class="form-label">学号/工号</text>
+        <input
+          class="form-input"
+          type="text"
+          placeholder="请输入学号或工号"
+          value="{{username}}"
+          bindinput="onUsernameInput"
+        />
+      </view>
+      
+      <view class="form-item">
+        <text class="form-label">密码</text>
+        <view class="password-input-wrapper">
+          <input
+            class="form-input password-input"
+            type="{{showPassword ? 'text' : 'password'}}"
+            placeholder="请输入密码"
+            value="{{password}}"
+            bindinput="onPasswordInput"
+          />
+          <view class="password-toggle" bindtap="togglePassword">
+            <text class="toggle-text">{{showPassword ? '隐藏' : '显示'}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="password-hint">
+        <text>初始密码：123456</text>
+      </view>
+
+      <button
+        class="login-button primary-btn"
+        bindtap="onPasswordLogin"
+        hover-class="button-hover">
+        登录
+      </button>
+    </view>
+
+    <!-- 分隔线 -->
+    <view class="divider">
+      <text>或</text>
+    </view>
+
+    <!-- 微信登录 -->
+    <button
+      class="login-button secondary-btn"
+      bindtap="onWechatLogin"
+      hover-class="button-hover">
+      微信快捷登录
+    </button>
+  </view>
+
+  <!-- 页脚帮助 -->
+  <view class="footer-help">
+    <text>遇到问题？联系管理员或重置密码</text>
+  </view>
+</view>

@@ -1,0 +1,236 @@
+<!-- pages/settings/config.wxml -->
+<!-- 个人中心与账号安全页面 -->
+
+<view class="page-container">
+  <!-- 用户 Profile 头部 -->
+  <view class="profile-header">
+    <view class="profile-avatar">
+      <icon type="user" size="56" color="#999"></icon>
+    </view>
+    <view class="profile-info">
+      <text class="profile-name">{{userInfo.name || userInfo.username || '用户'}}</text>
+      <text class="profile-id">学号：{{userInfo.username || '未知'}}</text>
+    </view>
+  </view>
+
+  <!-- 用户信息卡片 -->
+  <view class="card-group">
+    <view class="card-wrapper">
+      <view class="info-row">
+        <view class="info-icon-wrap"></view>
+        <view class="info-content">
+          <text class="info-label">姓名</text>
+          <text class="info-value">{{userInfo.name || '未知'}}</text>
+        </view>
+      </view>
+      <view class="info-row">
+        <view class="info-icon-wrap"></view>
+        <view class="info-content">
+          <text class="info-label">学号</text>
+          <text class="info-value">{{userInfo.username || '未知'}}</text>
+        </view>
+      </view>
+      <view class="info-row">
+        <view class="info-icon-wrap"></view>
+        <view class="info-content">
+          <text class="info-label">角色</text>
+          <text class="info-value">{{userInfo.role === 'admin' ? '管理员' : userInfo.role === 'warden' ? '宿舍管理员' : '学生'}}</text>
+        </view>
+      </view>
+      <view class="info-row info-row-last">
+        <view class="info-icon-wrap"></view>
+        <view class="info-content">
+          <text class="info-label">用户 ID</text>
+          <text class="info-value">{{userInfo.id || '未知'}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 微信绑定 -->
+  <view class="card-group">
+    <view class="card-wrapper">
+      <view class="binding-row" bindtap="handleWechatAction">
+        <view class="binding-left">
+          <view class="info-icon-wrap"></view>
+          <text class="binding-label">微信绑定</text>
+        </view>
+        <view class="binding-right">
+          <view class="status-badge {{wechatBindingStatus.is_bound ? 'badge-bound' : 'badge-unbound'}}">
+            <text>{{wechatBindingStatus.is_bound ? '已绑定' : '未绑定'}}</text>
+          </view>
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
+      <view wx:if="{{wechatBindingStatus.is_bound}}" class="openid-footer">
+        <text class="openid-value">OpenID: {{wechatBindingStatus.openid}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 账号安全 -->
+  <view class="card-group">
+    <view class="card-wrapper">
+      <view class="binding-row" bindtap="onShowChangePassword">
+        <view class="binding-left">
+          <view class="info-icon-wrap"></view>
+          <text class="binding-label">修改密码</text>
+        </view>
+        <view class="binding-right">
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 管理员成员管理入口 -->
+  <view wx:if="{{userInfo.role === 'admin'}}" class="card-group">
+    <view class="card-wrapper">
+      <view class="binding-row" bindtap="navigateToMemberManage">
+        <view class="binding-left">
+          <view class="info-icon-wrap"></view>
+          <text class="binding-label">成员管理</text>
+        </view>
+        <view class="binding-right">
+          <text class="arrow-icon">›</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 最近动作 -->
+  <view class="card-group">
+    <view class="card-wrapper">
+      <!-- 标签页 -->
+      <view class="logs-tabs">
+        <view 
+          class="log-tab {{activeTab === 'access' ? 'active' : ''}}"
+          data-tab="access"
+          bindtap="switchTab"
+        >
+          <text>访问记录</text>
+        </view>
+        <view 
+          class="log-tab {{activeTab === 'application' ? 'active' : ''}}"
+          data-tab="application"
+          bindtap="switchTab"
+        >
+          <text>申请记录</text>
+        </view>
+      </view>
+
+      <!-- 访问记录标签页内容 -->
+      <view wx:if="{{activeTab === 'access'}}">
+        <view wx:if="{{accessLogs.length > 0}}" class="logs-list">
+          <view 
+            class="log-item" 
+            wx:for="{{accessLogs}}" 
+            wx:key="id"
+            wx:for-item="log"
+          >
+            <view class="log-header">
+              <view class="log-device">{{log.device_name || log.device_mac}}</view>
+              <view class="log-status {{log.status === 'success' ? 'success' : 'failed'}}">
+                {{log.status === 'success' ? '成功' : '失败'}}
+              </view>
+            </view>
+            <view class="log-meta">
+              <text class="log-method">{{log.methodText}}</text>
+              <text class="log-time">{{log.create_time}}</text>
+            </view>
+          </view>
+        </view>
+        <view wx:else class="empty-logs">
+          <text class="empty-hint">暂无访问记录</text>
+        </view>
+      </view>
+
+      <!-- 申请记录标签页内容 -->
+      <view wx:if="{{activeTab === 'application'}}">
+        <view wx:if="{{applicationLogs.length > 0}}" class="logs-list">
+          <view 
+            class="log-item" 
+            wx:for="{{applicationLogs}}" 
+            wx:key="id"
+            wx:for-item="app"
+          >
+            <view class="log-header">
+              <view class="log-device">{{app.device_name || app.device_mac}}</view>
+              <view class="log-status {{app.status === 'pending' ? 'pending' : app.status === 'approved' ? 'approved' : 'rejected'}}">
+                {{app.status === 'pending' ? '待审批' : app.status === 'approved' ? '已批准' : '已拒绝'}}
+              </view>
+            </view>
+            <view class="log-meta">
+              <text class="log-text">设备绑定申请</text>
+              <text class="log-time">{{app.created_at}}</text>
+            </view>
+          </view>
+        </view>
+        <view wx:else class="empty-logs">
+          <text class="empty-hint">暂无申请记录</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 退出登录 -->
+  <view class="logout-group">
+    <button class="logout-button" bindtap="onLogout">退出登录</button>
+  </view>
+
+  <!-- 版权信息 -->
+  <view class="copyright-block">
+    <text class="copyright-text">© 2026 智慧校园门禁系统</text>
+    <text class="copyright-text">闽ICP备2021006383号</text>
+  </view>
+</view>
+
+<!-- 修改密码弹窗 -->
+<view class="modal-mask" wx:if="{{showPasswordModal}}" bindtap="onHideChangePassword">
+  <view class="modal-dialog" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">修改密码</text>
+      <text class="modal-close" bindtap="onHideChangePassword">关闭</text>
+    </view>
+
+    <view class="modal-body">
+      <view class="form-item">
+        <text class="form-label">旧密码</text>
+        <input
+          class="form-input"
+          password="true"
+          placeholder="请输入旧密码"
+          value="{{passwordForm.oldPassword}}"
+          bindinput="onOldPasswordInput"
+        />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">新密码</text>
+        <input
+          class="form-input"
+          password="true"
+          placeholder="请输入新密码（至少6位）"
+          value="{{passwordForm.newPassword}}"
+          bindinput="onNewPasswordInput"
+        />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">确认新密码</text>
+        <input
+          class="form-input"
+          password="true"
+          placeholder="请再次输入新密码"
+          value="{{passwordForm.confirmPassword}}"
+          bindinput="onConfirmPasswordInput"
+        />
+      </view>
+    </view>
+
+    <view class="modal-footer">
+      <button class="modal-btn btn-cancel" bindtap="onHideChangePassword">取消</button>
+      <button class="modal-btn btn-confirm" bindtap="onSubmitChangePassword" loading="{{passwordLoading}}">保存</button>
+    </view>
+  </view>
+</view>

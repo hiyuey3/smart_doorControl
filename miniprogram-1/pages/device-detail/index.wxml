@@ -1,0 +1,196 @@
+<!-- pages/device-detail/index.wxml -->
+<!-- 设备详情页 - 沉浸式监控 + 多维控制 + 危险操作区 -->
+
+<view class="page-container">
+  <!-- 顶部设备信息条 -->
+  <view class="device-info-bar">
+    <text class="device-info-name">{{device.name || '未命名设备'}}</text>
+    <view class="device-info-badge {{device.status === 'online' ? 'badge-online' : 'badge-offline'}}">
+      <text>{{device.status === 'online' ? '在线' : '离线'}}</text>
+    </view>
+  </view>
+
+  <!-- 沉浸式监控区 (Header 40%) -->
+  <view class="monitor-section">
+    <!-- 视频流容器 -->
+    <view class="video-container">
+      <!-- HTTP 快照流 -->
+      <image 
+        class="video-feed" 
+        src="{{videoFrame}}" 
+        mode="aspectFill"
+        bindload="onVideoLoad"
+        binderror="onVideoError"
+      ></image>
+
+      <!-- 离线遮罩 -->
+      <view class="offline-mask" wx:if="{{device.status !== 'online'}}">
+        <text class="offline-text">设备离线</text>
+      </view>
+
+      <!-- 视频区域右下角 - 刷新快照悬浮按钮 -->
+      <view class="video-refresh-btn" bindtap="handleStreamRefresh" style="opacity: {{isSnapshotLoading ? 0.6 : 1}};">
+        <text class="refresh-icon">刷新</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 多维控制面板 (Grid 布局) -->
+  <view class="control-panel">
+    <text class="control-panel-title">快速控制</text>
+    
+    <view class="control-grid">
+      <!-- 一键开锁 -->
+      <view class="control-card" 
+        bindtap="handleAction"
+        data-action="open_door"
+        style="{{actionStates.open_door === 'success' ? 'background: #f0f8ff; border-color: #1989fa;' : ''}}"
+      >
+        <text class="control-label">开锁</text>
+        <view class="control-status {{actionStates.open_door}}" wx:if="{{actionStates.open_door}}">
+          {{actionStates.open_door === 'loading' ? '执行中...' : '✓'}}
+        </view>
+      </view>
+
+      <!-- 强制锁定 -->
+      <view class="control-card"
+        bindtap="handleAction"
+        data-action="keep_open"
+        data-state="0"
+        style="{{actionStates.keep_open === 'success' ? 'background: #f0f8ff; border-color: #1989fa;' : ''}}"
+      >
+        <text class="control-label">锁定</text>
+        <view class="control-status {{actionStates.keep_open}}" wx:if="{{actionStates.keep_open}}">
+          {{actionStates.keep_open === 'loading' ? '执行中...' : '✓'}}
+        </view>
+      </view>
+
+      <!-- 警报鸣响 -->
+      <view class="control-card"
+        bindtap="handleAction"
+        data-action="alarm"
+        style="{{actionStates.alarm === 'success' ? 'background: #fff8f0; border-color: #ff9500;' : ''}}"
+      >
+        <text class="control-label">警报</text>
+        <view class="control-status {{actionStates.alarm}}" wx:if="{{actionStates.alarm}}">
+          {{actionStates.alarm === 'loading' ? '执行中...' : '✓'}}
+        </view>
+      </view>
+
+      <!-- 补光灯 -->
+      <view class="control-card"
+        bindtap="handleAction"
+        data-action="light"
+        data-state="1"
+        style="{{actionStates.light === 'success' ? 'background: #fffaf0; border-color: #ff9500;' : ''}}"
+      >
+        <text class="control-label">补光灯</text>
+        <view class="control-status {{actionStates.light}}" wx:if="{{actionStates.light}}">
+          {{actionStates.light === 'loading' ? '执行中...' : '✓'}}
+        </view>
+      </view>
+
+      <!-- 查询状态 -->
+      <view class="control-card"
+        bindtap="handleAction"
+        data-action="query_status"
+      >
+        <text class="control-label">查询状态</text>
+      </view>
+
+      <!-- 重启设备 -->
+      <view class="control-card"
+        bindtap="handleAction"
+        data-action="reboot"
+        style="{{actionStates.reboot === 'success' ? 'background: #f0f8ff; border-color: #1989fa;' : ''}}"
+      >
+        <text class="control-label">重启</text>
+        <view class="control-status {{actionStates.reboot}}" wx:if="{{actionStates.reboot}}">
+          {{actionStates.reboot === 'loading' ? '执行中...' : '✓'}}
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 设备仪表盘（Telemetry Dashboard） -->
+  <view class="telemetry-dashboard">
+    <text class="telemetry-title">设备状态</text>
+    
+    <view class="telemetry-row">
+      <view class="telemetry-left">
+        <view class="telemetry-label-tag">信号</view>
+        <view class="telemetry-info">
+          <text class="telemetry-label">信号强度</text>
+          <text class="telemetry-value">{{deviceInfo.rssi || '-- dBm'}}</text>
+        </view>
+      </view>
+      <view class="signal-strength {{deviceInfo.signalLevel || 'medium'}}"></view>
+    </view>
+
+    <view class="telemetry-row">
+      <view class="telemetry-left">
+        <view class="telemetry-label-tag">运行</view>
+        <view class="telemetry-info">
+          <text class="telemetry-label">运行时长</text>
+          <text class="telemetry-value">{{deviceInfo.uptime || '--'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="telemetry-row">
+      <view class="telemetry-left">
+        <view class="telemetry-label-tag">固件</view>
+        <view class="telemetry-info">
+          <text class="telemetry-label">固件版本</text>
+          <text class="telemetry-value">{{deviceInfo.firmwareVersion || 'v1.0.0'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="telemetry-row">
+      <view class="telemetry-left">
+        <view class="telemetry-label-tag">温度</view>
+        <view class="telemetry-info">
+          <text class="telemetry-label">设备温度</text>
+          <text class="telemetry-value">{{deviceInfo.temperature || '--°C'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="telemetry-row">
+      <view class="telemetry-left">
+        <view class="telemetry-label-tag">MAC</view>
+        <view class="telemetry-info">
+          <text class="telemetry-label">MAC 地址</text>
+          <text class="telemetry-value mac-address">{{device.mac_address}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="telemetry-row">
+      <view class="telemetry-left">
+        <view class="telemetry-label-tag">时间</view>
+        <view class="telemetry-info">
+          <text class="telemetry-label">绑定时间</text>
+          <text class="telemetry-value">{{device.created_at}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 危险操作区 (Danger Zone) -->
+  <view class="danger-zone">
+    <text class="danger-zone-title">危险区域</text>
+    <text class="danger-zone-hint">以下操作无法撤销，请谨慎</text>
+    
+    <button 
+      class="danger-btn unbind-btn"
+      bindtap="handleUnbindClick"
+    >
+      解除设备绑定
+    </button>
+  </view>
+
+  <!-- 空白占位符 -->
+  <view class="spacer"></view>
+</view>

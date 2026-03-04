@@ -1,0 +1,121 @@
+{% extends "admin/base.html" %}
+
+{% block title %}仪表盘{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 32px;">
+    <h1 class="page-title">仪表盘</h1>
+    <p class="page-subtitle">系统运行状态实时监控</p>
+</div>
+
+<!-- 统计卡片 -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin-bottom: 32px;">
+    <div class="card">
+        <div style="padding: 24px;">
+            <div style="font-size: 14px; color: #64748B; margin-bottom: 12px;">总用户数</div>
+            <div style="font-size: 32px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px;">{{ user_count }}</div>
+            <div style="font-size: 12px; color: #94A3B8;">今日活跃: {{ user_count }} 人</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="padding: 24px;">
+            <div style="font-size: 14px; color: #64748B; margin-bottom: 12px;">在线设备</div>
+            <div style="font-size: 32px; font-weight: 700; color: #07c160; margin-bottom: 8px;">{{ online_count }}/{{ device_count }}</div>
+            <div style="font-size: 12px; color: #94A3B8;">设备总数: {{ device_count }} 台</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="padding: 24px;">
+            <div style="font-size: 14px; color: #64748B; margin-bottom: 12px;">今日通行</div>
+            <div style="font-size: 32px; font-weight: 700; color: #ff9500; margin-bottom: 8px;">{{ today_logs }}</div>
+            <div style="font-size: 12px; color: #94A3B8;">总记录数: {{ total_logs }} 条</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="padding: 24px;">
+            <div style="font-size: 14px; color: #64748B; margin-bottom: 12px;">系统状态</div>
+            <div style="font-size: 32px; font-weight: 700; color: #07c160; margin-bottom: 8px;">正常</div>
+            <div style="font-size: 12px; color: #94A3B8;">运行时间: 99.9%</div>
+        </div>
+    </div>
+</div>
+
+<!-- 设备状态 -->
+<div class="card">
+    <div class="card-header">设备在线状态</div>
+    <table>
+        <thead>
+            <tr>
+                <th>设备名称</th>
+                <th>MAC 地址</th>
+                <th>房间号</th>
+                <th>状态</th>
+                <th>最后心跳</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for device in devices %}
+            <tr>
+                <td>{{ device.name or '未命名' }}</td>
+                <td style="font-family: monospace; font-size: 12px;">{{ device.mac_address }}</td>
+                <td>{{ device.room_number or '-' }}</td>
+                <td>
+                    {% if device.status == 'online' %}
+                    <span class="badge badge-success">在线</span>
+                    {% else %}
+                    <span class="badge badge-danger">离线</span>
+                    {% endif %}
+                </td>
+                <td>{{ device.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if device.last_heartbeat else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">暂无设备数据</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 最近通行记录 -->
+<div class="card">
+    <div class="card-header">最近通行记录</div>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>开锁方式</th>
+                <th>设备</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in recent_logs %}
+            <tr>
+                <td>{{ log.create_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ log.user_name or '未知' }}</td>
+                <td>
+                    {% if log.unlock_method == 'fingerprint' %}
+                        <span class="badge badge-primary">指纹</span>
+                    {% elif log.unlock_method == 'nfc' %}
+                        <span class="badge badge-success">NFC</span>
+                    {% elif log.unlock_method == 'remote' %}
+                        <span class="badge badge-warning">远程</span>
+                    {% else %}
+                        <span class="badge badge-secondary">{{ log.unlock_method }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ log.mac_address }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-center text-muted">暂无通行记录</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,152 @@
+<!-- pages/console/index.wxml -->
+<!-- 控制台页面 - 多设备卡片式布局 -->
+
+<view class="page-container">
+  <!-- 页面标题 + 申请按钮 -->
+  <view class="page-header">
+    <text class="page-title">我的设备</text>
+    <view class="action-btn" bindtap="showBindDialog">
+      <text>添加设备</text>
+    </view>
+  </view>
+
+  <!-- 设备卡片列表（支持多个设备） -->
+  <view class="device-list">
+    <!-- 循环渲染每个设备卡片 -->
+    <view 
+      class="device-card" 
+      wx:for="{{devices}}" 
+      wx:key="mac_address"
+      wx:for-item="device"
+    >
+      <!-- 卡片头部：设备名称 + 在线状态 -->
+      <view class="card-header">
+        <view class="header-left">
+          <!-- 左侧蓝色圆点引导 -->
+          <view class="icon-dot"></view>
+          <!-- 设备名称（优先显示name，其次room_number） -->
+          <text class="device-name">{{device.name || device.room_number || '未命名设备'}}</text>
+        </view>
+        
+        <!-- 右侧状态徽章（药丸形状） -->
+        <view class="status-badge {{device.status === 'online' ? 'status-online' : 'status-offline'}}">
+          <text>{{device.status === 'online' ? '在线' : '离线'}}</text>
+        </view>
+      </view>
+
+      <!-- 卡片中间：视频流区域 -->
+      <view class="card-video {{device.status === 'offline' ? 'video-offline' : ''}}">
+        <!-- 设备在线时显示视频流 -->
+        <image 
+          wx:if="{{device.status === 'online'}}"
+          class="video-stream" 
+          src="{{videoStreamUrl}}" 
+          mode="aspectFill"
+          alt="设备视频流"
+        ></image>
+        
+        <!-- 设备离线时显示占位符 -->
+        <view wx:else class="video-placeholder">
+          <text class="placeholder-text">设备已离线</text>
+        </view>
+        
+        <!-- 离线遮罩：半透明灰色覆盖层（仅在设备离线时显示） -->
+        <view class="offline-overlay" wx:if="{{device.status === 'offline'}}">
+          <text class="offline-text">无法访问</text>
+        </view>
+      </view>
+
+      <!-- 卡片底部：操作按钮 -->
+      <view class="card-footer" catchtap="stopPropagation">
+        <!-- 
+          开锁按钮：
+          - 绑定设备的 MAC 地址到 data-mac
+          - 绑定设备名称到 data-name
+          - 当设备离线时，按钮禁用
+          - 点击事件严格验证权限
+        -->
+        <button 
+          class="unlock-btn {{device.status === 'online' ? 'btn-active' : 'btn-disabled'}}" 
+          bindtap="onUnlockDevice" 
+          data-mac="{{device.mac_address}}"
+          data-name="{{device.name || device.room_number}}"
+          disabled="{{device.status !== 'online'}}"
+        >
+          {{device.status === 'online' ? '远程开锁' : '设备离线'}}
+        </button>
+
+        <view
+          class="manage-btn"
+          bindtap="handleDeviceCardTap"
+          data-mac="{{device.mac_address}}"
+        >
+          <text class="manage-arrow">详情</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态提示：当用户没有任何已批准设备时显示 -->
+  <view class="empty-state" wx:if="{{devices.length === 0}}">
+    <!-- 蓝色引导框线条图标（CSS 绘制） -->
+    <view class="empty-icon"></view>
+    
+    <text class="empty-title">暂无受控设备</text>
+    <text class="empty-hint">您还没有获得任何设备的访问权限</text>
+    <text class="empty-hint-sub" style="text-align: center;">请扫描设备二维码或</text>
+    <text class="empty-hint-sub" style="text-align: center; color: gray;">或</text>
+    <text class="empty-hint-sub" style="text-align: center;">从管理员处获取设备编码发起申请</text>
+    
+    <!-- <button class="empty-btn" bindtap="showBindDialog">
+      申请设备访问权
+    </button> -->
+  </view>
+</view>
+
+<!-- 申请绑定设备弹窗 -->
+<view class="modal-mask" wx:if="{{showBindModal}}" bindtap="hideBindDialog">
+  <view class="modal-dialog" catchtap="stopPropagation">
+    <view class="modal-header">
+      <text class="modal-title">确认添加设备</text>
+      <text class="modal-close" bindtap="hideBindDialog">✕</text>
+    </view>
+    
+    <view class="modal-body">
+      <!-- 输入 MAC 地址 -->
+      <view class="form-item">
+        <text class="form-label">设备 MAC 地址</text>
+        <input 
+          class="form-input" 
+          type="text" 
+          placeholder="格式：AA:BB:CC:DD:EE:FF"
+          value="{{bindMacAddress}}"
+          bindinput="onMacAddressInput"
+          maxlength="17"
+        />
+      </view>
+      
+      <!-- 分割线 -->
+      <view class="divider-section">
+        <view class="divider-line"></view>
+        <text class="divider-text">或</text>
+        <view class="divider-line"></view>
+      </view>
+      
+      <!-- 扫码输入 -->
+      <button class="scan-btn-modal" bindtap="handleScanCodeInModal">
+        扫码输入设备码
+      </button>
+      
+      <!-- 提示文字 -->
+      <view class="form-hint">
+        <text>提示：请从管理员处获取 MAC 地址或扫描设备二维码</text>
+      </view>
+    </view>
+    
+    <!-- 模态框底部按钮 -->
+    <view class="modal-footer">
+      <button class="modal-btn btn-cancel" bindtap="hideBindDialog">取消</button>
+      <button class="modal-btn btn-confirm" bindtap="confirmBindDevice">提交申请</button>
+    </view>
+  </view>
+</view>

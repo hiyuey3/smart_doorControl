@@ -1,0 +1,62 @@
+.github/copilot-instructions.20260302.bak
+
+# ---- AI / Machine Learning related files (do not commit) ----
+# Model files and checkpoints
+models/
+.github/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.onnx
+.claude/
+.vscode/
+
+# Training artifacts and logs
+logs/
+runs/
+tensorboard/
+output/
+
+# Caches and framework folders
+.cache/
+.huggingface/
+huggingface/
+hf_cache/
+transformers/
+
+# Notebooks and checkpoints
+notebooks/
+*.ipynb
+ipynb_checkpoints/
+
+# Local AI tooling
+.ai/
+ai/
+
+# Secrets, API keys and credentials
+.env
+.env.local
+.env.*.local
+openai_api_key
+openai_key
+*.key
+*.pem
+api_key*
+secrets.json
+.venv/
+.shared/
+__pycache__/
+credentials.json
+*.log
+*.log.*
+logs/
+
+
+# Misc
+# Ignore large binary datasets or exports commonly used for ML
+*.tar.gz
+*.zip
+*.h5

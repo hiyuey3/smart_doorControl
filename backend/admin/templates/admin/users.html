@@ -1,0 +1,113 @@
+{% extends "admin/base.html" %}
+
+{% block title %}用户管理{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 32px;">
+    <h1 class="page-title">用户管理</h1>
+    <p class="page-subtitle">系统用户信息管理</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>用户列表</span>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                添加用户
+            </button>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>学号/工号</th>
+                <th>姓名</th>
+                <th>角色</th>
+                <th>指纹 ID</th>
+                <th>NFC UID</th>
+                <th>注册时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.username or '-' }}</td>
+                <td>{{ user.name or '-' }}</td>
+                <td>
+                    {% if user.role == 'admin' %}
+                        <span class="badge badge-danger">管理员</span>
+                    {% elif user.role == 'warden' %}
+                        <span class="badge badge-primary">宿管</span>
+                    {% else %}
+                        <span class="badge badge-success">学生</span>
+                    {% endif %}
+                </td>
+                <td style="font-family: monospace; font-size: 12px;">{{ user.fingerprint_id or '-' }}</td>
+                <td style="font-family: monospace; font-size: 12px;">{{ user.nfc_uid or '-' }}</td>
+                <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
+                <td>
+                    <a href="{{ url_for('web.delete_user', user_id=user.id) }}" 
+                       class="btn btn-sm btn-danger" 
+                       onclick="return confirm('确定删除此用户吗？')">删除</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" class="text-center text-muted">暂无用户数据</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 添加用户模态框 -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('web.add_user') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">学号/工号</label>
+                        <input type="text" class="form-control" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">姓名</label>
+                        <input type="text" class="form-control" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">密码</label>
+                        <input type="text" class="form-control" name="password" value="123456" placeholder="默认密码 123456">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">角色</label>
+                        <select class="form-select" name="role">
+                            <option value="student">学生</option>
+                            <option value="warden">宿管</option>
+                            <option value="admin">管理员</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">指纹 ID</label>
+                        <input type="text" class="form-control" name="fingerprint_id">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">NFC UID</label>
+                        <input type="text" class="form-control" name="nfc_uid">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">确定</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

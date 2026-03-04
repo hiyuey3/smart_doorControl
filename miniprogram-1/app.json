@@ -1,0 +1,40 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/console/index",
+    "pages/device-detail/index",
+    "pages/logs/index",
+    "pages/users/manage",
+    "pages/settings/config"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#fff",
+    "navigationBarTitleText": "智慧校园门禁系统",
+    "navigationBarTextStyle": "black",
+    "enablePullDownRefresh": true,
+    "backgroundColor": "#f7f8fa"
+  },
+  "tabBar": {
+    "color": "#7A7E83",
+    "selectedColor": "#1989fa",
+    "borderStyle": "black",
+    "backgroundColor": "#ffffff",
+    "list": [
+      {
+        "pagePath": "pages/console/index",
+        "text": "控制台",
+        "iconPath": "assets/icons/console.png",
+        "selectedIconPath": "assets/icons/console-active.png"
+      },
+      {
+        "pagePath": "pages/settings/config",
+        "text": "个人配置",
+        "iconPath": "assets/icons/settings.png",
+        "selectedIconPath": "assets/icons/settings-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

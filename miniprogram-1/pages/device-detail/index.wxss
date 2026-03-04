@@ -1,0 +1,384 @@
+/* pages/device-detail/index.wxss */
+/* 设备详情页 - 专业IoT控制终端 */
+
+/* 页面容器 */
+.page-container {
+  width: 100%;
+  min-height: 100vh;
+  background: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶部设备信息条 */
+.device-info-bar {
+  margin: 24rpx 24rpx 24rpx;
+  padding: 24rpx 28rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.device-info-name {
+  flex: 1;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-info-badge {
+  padding: 6rpx 16rpx;
+  border-radius: 100rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-online {
+  background: #e8f5e9;
+  color: #07c160;
+}
+
+.badge-offline {
+  background: #f5f5f5;
+  color: #999999;
+}
+
+/* 沉浸式监控区 (40vh) */
+.monitor-section {
+  flex-shrink: 0;
+  height: 40vh;
+  background: #1a1a1a;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0;
+}
+
+.video-container {
+  width: 100%;
+  flex: 1;
+  background: #000000;
+  position: relative;
+  overflow: hidden;
+}
+
+.video-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 离线遮罩 */
+.offline-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4rpx);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.offline-text {
+  font-size: 32rpx;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* 视频区域悬浮刷新按钮 */
+.video-refresh-btn {
+  position: absolute;
+  bottom: 24rpx;
+  right: 24rpx;
+  width: 56rpx;
+  height: 56rpx;
+  background: rgba(25, 137, 250, 0.8);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.video-refresh-btn:active {
+  transform: scale(0.92);
+  background: rgba(25, 137, 250, 1);
+}
+
+.refresh-icon {
+  font-size: 24rpx;
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+
+/* 多维控制面板 */
+.control-panel {
+  flex-shrink: 0;
+  background: #ffffff;
+  padding: 40rpx;
+  border-radius: 28rpx;
+  margin: 32rpx;
+  margin-bottom: 0;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
+}
+
+.control-panel-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 32rpx;
+  display: block;
+}
+
+/* Grid 布局 */
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20rpx;
+}
+
+.control-card {
+  background: #ffffff;
+  border: 1rpx solid #eeeeee;
+  border-radius: 16rpx;
+  padding: 20rpx 20rpx;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 90rpx;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.02);
+}
+
+.control-card:active {
+  background: #fafafa;
+  transform: translateY(-2rpx);
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+}
+
+.control-label {
+  font-size: 26rpx;
+  color: #333333;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.control-status {
+  font-size: 16rpx;
+  font-weight: 500;
+  margin-top: 4rpx;
+}
+
+.control-status.loading {
+  color: #ff9500;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.control-status.success {
+  color: #07c160;
+}
+
+/* 设备仪表盘（Dashboard） */
+.telemetry-dashboard {
+  background: #ffffff;
+  margin: 24rpx;
+  margin-top: 32rpx;
+  padding: 32rpx;
+  border-radius: 28rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
+}
+
+.telemetry-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 24rpx;
+  display: block;
+}
+
+.telemetry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.telemetry-row:last-child {
+  border-bottom: none;
+}
+
+.telemetry-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+}
+label-tag {
+  font-size: 20rpx;
+  color: #ffffff;
+  background: #1989fa;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 40rpx;
+  text-align: center 8rpx;
+  flex-shrink: 0;
+}
+
+.telemetry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.telemetry-label {
+  font-size: 24rpx;
+  color: #666666;
+  font-weight: 400;
+}
+
+.telemetry-value {
+  font-size: 26rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+}
+
+.mac-address {
+  font-size: 22rpx;
+  word-break: break-all;
+}
+
+/* 信号强度阶梯图标 */
+.signal-strength {
+  display: flex;
+  gap: 4rpx;
+  align-items: flex-end;
+}
+
+.signal-strength::before,
+.signal-strength::after {
+  content: '';
+  display: inline-block;
+}
+
+/* 4格信号强度 - 弱 (1格) */
+.signal-strength.weak::before {
+  width: 4rpx;
+  height: 8rpx;
+  background: #ff4444;
+  border-radius: 2rpx;
+}
+
+/* 中 (2格) */
+.signal-strength.medium::before {
+  width: 4rpx;
+  height: 12rpx;
+  background: #ff9500;
+  border-radius: 2rpx;
+  margin-right: 2rpx;
+}
+
+.signal-strength.medium::after {
+  content: '';
+  width: 4rpx;
+  height: 8rpx;
+  background: #ff9500;
+  border-radius: 2rpx;
+}
+
+/* 强 (4格) */
+.signal-strength.strong {
+  gap: 2rpx;
+}
+
+.signal-strength.strong::before {
+  width: 4rpx;
+  height: 16rpx;
+  background: #07c160;
+  border-radius: 2rpx;
+  content: '';
+  display: inline-block;
+}
+
+/* 危险操作区 */
+.danger-zone {
+  background: #ffffff;
+  margin: 24rpx;
+  padding: 32rpx;
+  border-radius: 28rpx;
+  border: 2rpx solid #ffebee;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
+}
+
+.danger-zone-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ff4444;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.danger-zone-hint {
+  font-size: 24rpx;
+  color: #ff9500;
+  margin-bottom: 20rpx;
+  display: block;
+}
+
+.danger-btn {
+  width: 100%;
+  /* height: 96rpx;  //没必要指定，会错位*/
+  background: transparent;
+  border: 2rpx solid #ff4444;
+  color: #ff4444;
+  font-size: 28rpx;
+  font-weight: 500;
+  border-radius: 100rpx;
+  transition: all 0.2s ease;
+}
+
+.danger-btn::after {
+  border: none;
+}
+
+.danger-btn:active {
+  background: rgba(255, 68, 68, 0.1);
+  transform: scale(0.98);
+}
+
+.unbind-btn {
+  margin-bottom: 20rpx; 
+  /* margin-top: 20rpx; */
+}
+
+/* 空白占位符 */
+.spacer {
+  height: 40rpx;
+}

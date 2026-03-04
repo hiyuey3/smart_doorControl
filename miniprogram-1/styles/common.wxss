@@ -1,0 +1,401 @@
+/* styles/common.wxss */
+/* 全局通用样式定义 - 作为页面样式的基础层 */
+/* 页面中的同名样式会自动覆盖这里的定义，确保不会破坏现有显示 */
+
+/* 页面容器基础样式 */
+.page-container {
+  width: 100%;
+  min-height: 100vh;
+  background: #f7f8fa;
+  box-sizing: border-box;
+}
+
+/* 状态标签（药丸造型） */
+.status-badge {
+  padding: 6rpx 16rpx;
+  border-radius: 100rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.status-online, .badge-bound, .log-status.success, .log-status.approved {
+  background: #e8f5e9;
+  color: #07c160;
+}
+
+.status-offline, .badge-unbound {
+  background: #f5f5f5;
+  color: #999999;
+}
+
+.status-pending, .log-status.pending, .app-status.status-pending {
+  background: #fff9e6;
+  color: #ff9500;
+}
+
+.status-error, .status-rejected, .log-status.failed, .log-status.rejected, .app-status.status-rejected {
+  background: #ffebee;
+  color: #ee0a24;
+}
+
+.status-approved, .app-status.status-approved {
+  background: #e8f5e9;
+  color: #07c160;
+}
+
+/* 按钮基础样式 */
+.btn-primary {
+  background: #1989fa;
+  color: #ffffff;
+  border-radius: 100rpx;
+  border: none;
+  font-size: 30rpx;
+  font-weight: 500;
+  box-shadow: 0 2rpx 8rpx rgba(25, 137, 250, 0.15);
+  transition: all 0.2s ease;
+}
+
+.btn-primary::after {
+  border: none;
+}
+
+.btn-primary:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 2rpx solid #1989fa;
+  color: #1989fa;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary::after {
+  border: none;
+}
+
+.btn-secondary:active {
+  background: #f0f9ff;
+}
+
+.btn-danger {
+  background: transparent;
+  border: 2rpx solid #ee0a24;
+  color: #ee0a24;
+  border-radius: 100rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-danger::after {
+  border: none;
+}
+
+.btn-danger:active {
+  background: rgba(238, 10, 36, 0.1);
+  transform: scale(0.98);
+}
+
+/* 卡片基础样式 */
+.ui-card {
+  background: #ffffff;
+  border-radius: 28rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+}
+
+/* 图标工具 */
+.icon-dot {
+  width: 6rpx;
+  height: 6rpx;
+  border-radius: 50%;
+  background: #1989fa;
+  display: inline-block;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+
+.arrow-icon {
+  font-size: 36rpx;
+  color: #cccccc;
+  font-weight: 300;
+}
+
+/* 表单组件 */
+.form-item {
+  margin-bottom: 32rpx;
+}
+
+.form-label {
+  display: block;
+  font-size: 28rpx;
+  color: #334155;
+  margin-bottom: 16rpx;
+  font-weight: 500;
+}
+
+.form-input {
+  width: 100%;
+  height: 96rpx;
+  background: #f8f9fa;
+  border: 2rpx solid #e2e8f0;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  color: #0f172a;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.form-input:focus {
+  background: #ffffff;
+  border-color: #1989fa;
+  box-shadow: 0 0 0 4rpx rgba(25, 137, 250, 0.08);
+}
+
+.form-hint {
+  margin-top: 24rpx;
+  padding: 20rpx;
+  background: #fff9e6;
+  border-radius: 12rpx;
+  border-left: 4rpx solid #ff9500;
+}
+
+.form-hint text {
+  font-size: 24rpx;
+  color: #856404;
+  line-height: 1.6;
+}
+
+/* 模态对话框 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-dialog {
+  width: 640rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  overflow: hidden;
+  animation: modal-slide-up 0.3s ease-out;
+}
+
+@keyframes modal-slide-up {
+  from {
+    transform: translateY(100rpx);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx 40rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.modal-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.modal-close {
+  font-size: 40rpx;
+  color: #999;
+  line-height: 1;
+  padding: 0 10rpx;
+}
+
+.modal-body {
+  padding: 40rpx;
+}
+
+.modal-footer {
+  display: flex;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 100rpx;
+  line-height: 100rpx;
+  font-size: 30rpx;
+  text-align: center;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.modal-btn::after {
+  border: none;
+}
+
+.btn-cancel {
+  color: #64748b;
+  border-right: 2rpx solid #f0f0f0;
+}
+
+.btn-cancel:active {
+  background: #f8fafc;
+}
+
+.btn-confirm {
+  color: #1989fa;
+  font-weight: 600;
+}
+
+.btn-confirm:active {
+  background: #f0f9ff;
+}
+
+/* 空状态占位符 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80rpx 40rpx;
+}
+
+.empty-icon {
+  font-size: 120rpx;
+  color: #e0e0e0;
+  margin-bottom: 24rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #666666;
+  margin-bottom: 12rpx;
+  text-align: center;
+}
+
+.empty-hint {
+  font-size: 26rpx;
+  color: #999999;
+  margin-bottom: 80rpx;
+  text-align: center;
+  line-height: 1.6;
+  max-width: 500rpx;
+}
+
+.empty-btn {
+  width: 320rpx;
+  height: 96rpx;
+  background: #1989fa;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 500;
+  border-radius: 100rpx;
+  border: none;
+  box-shadow: 0 4rpx 16rpx rgba(25, 137, 250, 0.3);
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-btn::after {
+  border: none;
+}
+
+.empty-btn:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+
+/* 危险操作区 */
+.danger-zone {
+  background: #ffffff;
+  margin: 24rpx;
+  padding: 32rpx;
+  border-radius: 28rpx;
+  border: 2rpx solid #ffebee;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
+}
+
+.danger-zone-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ff4444;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.danger-zone-hint {
+  font-size: 24rpx;
+  color: #ff9500;
+  margin-bottom: 20rpx;
+  display: block;
+}
+
+.danger-btn {
+  width: 100%;
+  /* height: 96rpx; */
+  background: transparent;
+  border: 2rpx solid #ff4444;
+  color: #ff4444;
+  font-size: 28rpx;
+  font-weight: 500;
+  border-radius: 100rpx;
+  transition: all 0.2s ease;
+  /* position: absolute; */
+}
+
+.danger-btn::after {
+  border: none;
+}
+
+.danger-btn:active {
+  background: rgba(255, 68, 68, 0.1);
+  transform: scale(0.98);
+}
+
+/* 分隔线 */
+.divider-section {
+  margin: 32rpx 0;
+  display: flex;
+  align-items: center;
+}
+
+.divider-line {
+  flex: 1;
+  height: 2rpx;
+  background: #e2e8f0;
+}
+
+.divider-text {
+  padding: 0 24rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+
+/* 间距工具 */
+.spacer {
+  height: 40rpx;
+}

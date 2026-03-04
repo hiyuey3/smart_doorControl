@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+
+{% block title %}通行记录{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 32px;">
+    <h1 class="page-title">通行记录</h1>
+    <p class="page-subtitle">系统通行日志查询</p>
+</div>
+
+<div class="card">
+    <div class="card-header">通行记录列表</div>
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>开锁方式</th>
+                <th>设备 MAC</th>
+                <th>房间号</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.create_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>{{ log.user_name or '未知' }}</td>
+                <td>
+                    {% if log.unlock_method == 'fingerprint' %}
+                        <span class="badge badge-primary">指纹</span>
+                    {% elif log.unlock_method == 'nfc' %}
+                        <span class="badge badge-success">NFC</span>
+                    {% elif log.unlock_method == 'remote' %}
+                        <span class="badge badge-warning">远程</span>
+                    {% else %}
+                        <span class="badge badge-secondary">{{ log.unlock_method }}</span>
+                    {% endif %}
+                </td>
+                <td style="font-family: monospace; font-size: 12px;">{{ log.mac_address }}</td>
+                <td>{{ log.room_number or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">暂无通行记录</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 分页 -->
+{% if pagination and pagination.pages > 1 %}
+<div style="margin-top: 24px; text-align: center;">
+    <nav>
+        <ul style="list-style: none; padding: 0; display: inline-flex; gap: 8px;">
+            {% if pagination.has_prev %}
+            <li>
+                <a href="{{ url_for('web.logs', page=pagination.prev_num) }}" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1989fa;">上一页</a>
+            </li>
+            {% endif %}
+
+            {% for page_num in pagination.iter_pages() %}
+                {% if page_num %}
+                    {% if page_num == pagination.page %}
+                    <li>
+                        <span style="padding: 8px 12px; background: #1989fa; color: white; border-radius: 4px; display: inline-block;">{{ page_num }}</span>
+                    </li>
+                    {% else %}
+                    <li>
+                        <a href="{{ url_for('web.logs', page=page_num) }}" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1989fa;">{{ page_num }}</a>
+                    </li>
+                    {% endif %}
+                {% else %}
+                <li>
+                    <span style="padding: 8px 12px; color: #ccc;">...</span>
+                </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if pagination.has_next %}
+            <li>
+                <a href="{{ url_for('web.logs', page=pagination.next_num) }}" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1989fa;">下一页</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endif %}
+{% endblock %}

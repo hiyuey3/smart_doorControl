@@ -1,0 +1,399 @@
+// pages/device-detail/index.js
+/**
+ * 设备详情页 - 沉浸式监控 + 多维控制（HTTP 版本，不使用 WebSocket）
+ * 
+ * 核心功能：
+ * 1. 显示设备实时快照（HTTP GET）
+ * 2. MQTT 指令分发（开启、警报、补光等）
+ * 3. 设备信息获取
+ * 4. 设备解绑流程
+ */
+
+const envConfig = require('../../config/env.js');
+
+Page({
+  data: {
+    device: {
+      mac_address: '',
+      name: '',
+      status: 'online',
+      created_at: ''
+    },
+    
+    // 视频相关（HTTP 快照模式）
+    videoFrame: '',  // 快照 URL
+    isSnapshotLoading: false,
+    
+    // 设备信息
+    deviceInfo: {
+      rssi: '-80 dBm',
+      signalLevel: 'medium',
+      uptime: '--',
+      firmwareVersion: 'v1.0.0',
+      temperature: '--°C'
+    },
+    
+    // 控制状态
+    actionStates: {
+      open_door: '',
+      keep_open: '',
+      alarm: '',
+      light: '',
+      query_status: '',
+      reboot: ''
+    }
+  },
+
+  onLoad(options) {
+    console.log(' 设备详情页 onLoad ', options);
+    
+    const { mac_address } = options;
+    if (!mac_address) {
+      wx.showToast({
+        title: '设备信息错误',
+        icon: 'none'
+      });
+      setTimeout(() => wx.navigateBack(), 1500);
+      return;
+    }
+    
+    this.setData({
+      'device.mac_address': mac_address
+    });
+    
+    // 1. 加载设备详情
+    this.loadDeviceDetail(mac_address);
+    
+    // 2. 加载设备快照
+    this.loadDeviceSnapshot(mac_address);
+    
+    // 3. 启动快照定时刷新
+    this.startSnapshotPolling(mac_address);
+    
+    // 4. 启动状态定时轮询
+    this.startStatusPolling();
+  },
+
+  onUnload() {
+    console.log(' 设备详情页 onUnload ');
+    
+    // 1. 清理快照轮询定时器
+    if (this.snapshotPollingTimer) {
+      clearInterval(this.snapshotPollingTimer);
+    }
+    
+    // 2. 清理状态轮询定时器
+    if (this.statusPollingTimer) {
+      clearInterval(this.statusPollingTimer);
+    }
+  },
+
+  /**
+   * 第一部分：设备详情加载
+   */
+  
+  loadDeviceDetail(mac_address) {
+    const apiUrl = envConfig.getApiUrl();
+    const token = wx.getStorageSync('token');
+    
+    // 从全局数据获取设备信息
+    const app = getApp();
+    const deviceList = app.globalData.devices || [];
+    const device = deviceList.find(d => d.mac_address === mac_address);
+    
+    if (device) {
+      this.setData({
+        device: {
+          mac_address: device.mac_address,
+          name: device.name || '未命名设备',
+          status: device.status || 'online',
+          created_at: device.created_at || '--'
+        }
+      });
+      
+      // 更新页面标题
+      wx.setNavigationBarTitle({
+        title: device.name
+      });
+    }
+    
+    // 查询设备实时状态
+    this.queryDeviceStatus(mac_address, token, apiUrl);
+  },
+
+  queryDeviceStatus(mac_address, token, apiUrl) {
+    // 发送查询状态指令到后端
+    wx.request({
+      url: apiUrl + '/device/action',
+      method: 'POST',
+      header: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      data: {
+        mac_address: mac_address,
+        action_type: 'query_status'
+      },
+      success: (res) => {
+        console.log('设备状态查询响应:', res);
+        if (res.statusCode === 200 && res.data.success) {
+          // 更新设备信息（后端返回的实时数据）
+          if (res.data.data && res.data.data.device_info) {
+            this.setData({
+              deviceInfo: res.data.data.device_info
+            });
+          }
+        }
+      },
+      fail: (err) => {
+        console.error('设备状态查询失败:', err);
+      }
+    });
+  },
+
+  /**
+   * 第二部分：HTTP 快照加载
+   */
+  
+  loadDeviceSnapshot(mac_address) {
+    console.log(' 加载设备快照 ');
+    
+    // 获取视频服务器地址
+    const videoServer = envConfig.getVideoStreamUrl ? 
+      envConfig.getVideoStreamUrl() : 
+      'http://192.168.0.100:81';  // 默认地址
+    
+    // 构建快照 URL（添加时间戳避免缓存）
+    const snapshotUrl = `${videoServer}?action=snapshot&t=${Date.now()}`;
+    console.log('快照 URL:', snapshotUrl);
+    
+    this.setData({
+      videoFrame: snapshotUrl,
+      isSnapshotLoading: false
+    });
+  },
+
+  /**
+   * 第三部分：多维控制指令分发
+   */
+  
+  handleAction(e) {
+    const { action } = e.currentTarget.dataset;
+    const state = e.currentTarget.dataset.state || undefined;
+    
+    console.log('执行动作:', action, 'state:', state);
+    
+    if (!action) return;
+    
+    // 设置加载状态
+    this.setData({
+      [`actionStates.${action}`]: 'loading'
+    });
+    
+    // 调用后端接口发送 MQTT 指令
+    this.sendDeviceAction(action, state);
+  },
+
+  sendDeviceAction(actionType, actionState) {
+    const apiUrl = envConfig.getApiUrl();
+    const token = wx.getStorageSync('token');
+    const mac_address = this.data.device.mac_address;
+    
+    const payload = {
+      mac_address: mac_address,
+      action_type: actionType
+    };
+    
+    // 某些动作需要状态参数
+    if (actionState !== undefined) {
+      payload.state = parseInt(actionState);
+    }
+    
+    wx.request({
+      url: apiUrl + '/device/action',
+      method: 'POST',
+      header: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      data: payload,
+      success: (res) => {
+        console.log('设备动作响应:', res);
+        
+        if (res.statusCode === 200 && res.data.success) {
+          // 设置成功状态
+          this.setData({
+            [`actionStates.${actionType}`]: 'success'
+          });
+          
+          wx.showToast({
+            title: res.data.message || '指令已发送',
+            icon: 'success',
+            duration: 2000
+          });
+          
+          // 3 秒后清除成功状态
+          setTimeout(() => {
+            this.setData({
+              [`actionStates.${actionType}`]: ''
+            });
+          }, 3000);
+        } else {
+          wx.showToast({
+            title: res.data.message || '指令发送失败',
+            icon: 'none',
+            duration: 2000
+          });
+          this.setData({
+            [`actionStates.${actionType}`]: ''
+          });
+        }
+      },
+      fail: (err) => {
+        console.error('指令发送失败:', err);
+        wx.showToast({
+          title: '网络错误，请重试',
+          icon: 'none',
+          duration: 2000
+        });
+        this.setData({
+          [`actionStates.${actionType}`]: ''
+        });
+      }
+    });
+  },
+
+  /**
+   * 第四部分：快照手动刷新
+   */
+  
+  handleStreamRefresh() {
+    console.log('手动刷新快照');
+    this.loadDeviceSnapshot(this.data.device.mac_address);
+  },
+
+  /**
+   * 第五部分：设备解绑流程
+   */
+  
+  handleUnbindClick() {
+    console.log('点击解绑按钮');
+    const deviceName = this.data.device.name || '该设备';
+    
+    wx.showModal({
+      title: '确认解除绑定',
+      content: `你确定要解除与 ${deviceName} 的绑定吗？解绑后，你将无法远程控制该设备，此操作无法撤销。`,
+      confirmText: '确认解绑',
+      cancelText: '取消',
+      confirmColor: '#EE0A24',
+      success: (res) => {
+        if (res.confirm) {
+          this.handleUnbindConfirm();
+        }
+      }
+    });
+  },
+
+  handleUnbindConfirm() {
+    console.log('确认解绑');
+    
+    const apiUrl = envConfig.getApiUrl();
+    const token = wx.getStorageSync('token');
+    const mac_address = this.data.device.mac_address;
+    
+    wx.showLoading({
+      title: '解绑中...',
+      mask: true
+    });
+    
+    wx.request({
+      url: apiUrl + '/user/devices/' + mac_address,
+      method: 'DELETE',
+      header: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      success: (res) => {
+        wx.hideLoading();
+        console.log('解绑响应:', res);
+        
+        if (res.statusCode === 200 && res.data.success) {
+          wx.showToast({
+            title: '解绑成功',
+            icon: 'success',
+            duration: 2000
+          });
+          
+          // 返回控制台页面并刷新
+          setTimeout(() => {
+            wx.navigateBack();
+            // 通知控制台页面刷新
+            const pages = getCurrentPages();
+            const prevPage = pages[pages.length - 2];
+            if (prevPage && prevPage.loadDevices) {
+              prevPage.loadDevices();
+            }
+          }, 2000);
+        } else {
+          wx.showToast({
+            title: res.data.message || '解绑失败',
+            icon: 'none',
+            duration: 2000
+          });
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading();
+        console.error('解绑请求失败:', err);
+        wx.showToast({
+          title: '网络错误',
+          icon: 'none',
+          duration: 2000
+        });
+      }
+    });
+  },
+
+  /**
+   * 辅助方法
+   */
+
+  stopPropagation() {
+    // 阻止事件冒泡
+  },
+
+  onVideoLoad() {
+    console.log('快照加载成功');
+  },
+
+  onVideoError(e) {
+    console.error('快照加载失败:', e);
+    wx.showToast({
+      title: '快照加载失败，请检查摄像头连接',
+      icon: 'none',
+      duration: 2000
+    });
+  },
+
+  /**
+   * 定时轮询
+   */
+  
+  startSnapshotPolling(mac_address) {
+    // 每 3 秒刷新一次快照
+    this.snapshotPollingTimer = setInterval(() => {
+      this.loadDeviceSnapshot(mac_address);
+    }, 3000);
+  },
+
+  startStatusPolling() {
+    // 每 30 秒查询一次设备状态
+    this.statusPollingTimer = setInterval(() => {
+      this.queryDeviceStatus(
+        this.data.device.mac_address,
+        wx.getStorageSync('token'),
+        envConfig.getApiUrl()
+      );
+    }, 30000);
+  }
+});

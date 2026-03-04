@@ -1,0 +1,471 @@
+/* pages/settings/config.wxss */
+/* 个人中心与账号安全 - iOS 高级风格 */
+
+page {
+  background-color: #f7f8fa;
+}
+
+.page-container {
+  padding: 0 40rpx;
+  min-height: 100vh;
+}
+
+/*  */
+/* Profile 头部                   */
+/*  */
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  padding: 36rpx 0 24rpx;
+  gap: 24rpx;
+}
+
+.profile-avatar {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background-color: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4rpx;
+  flex: 1;
+}
+
+.profile-name {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.3;
+}
+
+.profile-id {
+  font-size: 26rpx;
+  color: #888888;
+  line-height: 1.3;
+}
+
+/*  */
+/* 卡片分组样式           */
+/*  */
+
+.card-group {
+  margin-top: 20rpx;
+}
+
+.card-group:first-of-type {
+  margin-top: 24rpx;
+}
+
+.card-wrapper {
+  background-color: #ffffff;
+  border-radius: 28rpx;
+  overflow: hidden;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+}
+
+/*  */
+/* 账户信息行             */
+/*  */
+
+.info-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+  gap: 16rpx;
+}
+
+.info-row-last {
+  border-bottom: none;
+}
+
+.info-icon-wrap {
+  position: relative;
+  width: 32rpx;
+  height: 32rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-icon-wrap::before {
+  content: '';
+  width: 6rpx;
+  height: 6rpx;
+  border-radius: 50%;
+  background-color: #1989fa;
+}
+
+.info-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+  gap: 12rpx;
+}
+
+.info-label {
+  font-size: 26rpx;
+  color: #666666;
+  font-weight: 500;
+  min-width: 80rpx;
+}
+
+.info-value {
+  font-size: 26rpx;
+  color: #333333;
+  text-align: right;
+  flex: 1;
+  word-break: break-word;
+}
+
+/*  */
+/* 微信绑定区域           */
+/*  */
+/* 微信绑定交互         */
+/*  */
+
+.binding-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.binding-row:active {
+  background-color: #f8f8f8;
+}
+
+.binding-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.binding-label {
+  font-size: 26rpx;
+  color: #666666;
+  font-weight: 500;
+}
+
+.binding-right {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.arrow-icon {
+  font-size: 36rpx;
+  color: #cccccc;
+  font-weight: 300;
+}
+
+.status-badge {
+  padding: 6rpx 16rpx;
+  border-radius: 100rpx;
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.badge-bound {
+  background-color: #e8f5e9;
+  color: #07c160;
+}
+
+.badge-unbound {
+  background-color: #ffebee;
+  color: #ee0a24;
+}
+
+.status-badge text {
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+/*  */
+/* OpenID 辅助说明       */
+/*  */
+
+.openid-footer {
+  padding: 12rpx 24rpx 16rpx;
+  background-color: #fafafa;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.openid-value {
+  font-size: 20rpx;
+  color: #cccccc;
+  word-break: break-all;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  line-height: 1.6;
+  font-weight: 300;
+}
+
+/*  */
+/* 退出登录               */
+/*  */
+
+/*  */
+/* 申请记录样式                    */
+/*  */
+
+.section-header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 24rpx 16rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.section-title {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.section-count {
+  font-size: 24rpx;
+  color: #999;
+  margin-left: 8rpx;
+}
+
+.application-list-mini {
+  padding: 8rpx 0;
+}
+
+.application-item-mini {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  border-bottom: 1rpx solid #f8f8f8;
+}
+
+.application-item-mini:last-child {
+  border-bottom: none;
+}
+
+.app-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  flex: 1;
+}
+
+.app-device {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.app-time {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.app-status {
+  padding: 6rpx 16rpx;
+  border-radius: 100rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.status-pending {
+  background-color: #fff9e6;
+  color: #ff9800;
+}
+
+.status-approved {
+  background-color: #e8f5e9;
+  color: #52c41a;
+}
+
+.status-rejected {
+  background-color: #ffebee;
+  color: #ff4c4c;
+}
+
+.empty-applications {
+  padding: 60rpx 0;
+  text-align: center;
+}
+
+.empty-hint {
+  font-size: 26rpx;
+  color: #cccccc;
+}
+
+/*  */
+/* 最近动作（日志）样式           */
+/*  */
+
+.logs-tabs {
+  display: flex;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.log-tab {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  font-size: 28rpx;
+  color: #cccccc;
+  border-bottom: 3rpx solid transparent;
+  transition: all 0.3s ease;
+}
+
+.log-tab.active {
+  color: #1976d2;
+  border-bottom-color: #1976d2;
+  font-weight: 600;
+}
+
+.logs-list {
+  padding: 8rpx 0;
+}
+
+.log-item {
+  padding: 20rpx 24rpx;
+  border-bottom: 1rpx solid #f8f8f8;
+}
+
+.log-item:last-child {
+  border-bottom: none;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.log-device {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 500;
+  flex: 1;
+}
+
+.log-status {
+  padding: 6rpx 16rpx;
+  border-radius: 100rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-left: 12rpx;
+}
+
+.log-status.success {
+  background-color: #e8f5e9;
+  color: #07c160;
+}
+
+.log-status.failed {
+  background-color: #ffebee;
+  color: #ee0a24;
+}
+
+.log-status.pending {
+  background-color: #fff9e6;
+  color: #ff9800;
+}
+
+.log-status.approved {
+  background-color: #e8f5e9;
+  color: #07c160;
+}
+
+.log-status.rejected {
+  background-color: #ffebee;
+  color: #ee0a24;
+}
+
+.log-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.log-method {
+  flex: 1;
+}
+
+.log-text {
+  flex: 1;
+}
+
+.log-time {
+  white-space: nowrap;
+  margin-left: 12rpx;
+}
+
+.empty-logs {
+  padding: 60rpx 0 80rpx;
+  text-align: center;
+}
+
+/*  */
+/* 退出登录                        */
+/*  */
+
+.logout-group {
+  margin-top: 80rpx;
+  margin-bottom: 40rpx;
+}
+
+.logout-button {
+  display: block;
+  width: 100% !important;
+  height: 96rpx !important;
+  line-height: 96rpx !important;
+  background-color: #ee0a24 !important;
+  color: #ffffff !important;
+  font-size: 32rpx !important;
+  font-weight: 600 !important;
+  border-radius: 12rpx !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 2rpx 8rpx rgba(238, 10, 36, 0.15) !important;
+  transition: all 0.25s ease !important;
+}
+
+.logout-button:active {
+  opacity: 0.85 !important;
+  transform: translateY(1rpx) !important;
+}
+
+/*  */
+/* 版权信息                        */
+/*  */
+
+.copyright-block {
+  margin: 12rpx 0 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.copyright-text {
+  font-size: 22rpx;
+  color: #94a3b8;
+  line-height: 1.5;
+}

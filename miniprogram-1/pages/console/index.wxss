@@ -1,0 +1,315 @@
+/* pages/console/index.wxss */
+/* 控制台首页样式 - 智慧校园极简风格 */
+
+/* 页面容器 */
+.page-container {
+  width: 100%;
+  min-height: 100vh;
+  background: #f7f8fa;
+  padding: 40rpx;
+  box-sizing: border-box;
+}
+
+/* 页面标题 + 申请按钮 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32rpx;
+}
+
+.page-title {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.action-btn {
+  padding: 16rpx 32rpx;
+  background: #1989fa;
+  color: #ffffff;
+  border-radius: 100rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  box-shadow: 0 2rpx 8rpx rgba(25, 137, 250, 0.15);
+  transition: all 0.2s ease;
+}
+
+.action-btn:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+
+/* 设备卡片列表 */
+.device-list {
+  display: flex;
+  flex-direction: column; /* 纵向排列 */
+  gap: 24rpx; /* 卡片之间的间距 */
+}
+
+/* 设备卡片 */
+.device-card {
+  background: #ffffff;
+  border-radius: 28rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  transition: box-shadow 0.3s ease;
+}
+
+.device-card:active {
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.05);
+}
+
+/* 卡片头部：设备名称 + 状态标签 */
+.card-header {
+  padding: 32rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2rpx solid #f5f5f5;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.device-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+  flex: 1;
+}
+
+/* 左侧蓝色圆点引导 */
+.icon-dot {
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #1989fa;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+
+/* 状态徽章（药丸形状） */
+.status-badge {
+  padding: 8rpx 16rpx;
+  border-radius: 100rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 在线状态：绿色 */
+.status-online {
+  background: #e8f5e9;
+  color: #07c160;
+}
+
+/* 离线状态：灰色 */
+.status-offline {
+  background: #f5f5f5;
+  color: #999999;
+}
+
+/* 视频流监控区域 */
+.card-video {
+  width: 100%;
+  height: 400rpx;
+  position: relative;
+  background: #1a1a1a;
+  overflow: hidden;
+}
+
+/* 设备离线时的视频区域样式 */
+.card-video.video-offline {
+  background: #e8e8e8;
+}
+
+.video-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.placeholder-text {
+  font-size: 28rpx;
+  color: #999999;
+  font-weight: 500;
+}
+
+.offline-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(2rpx);
+}
+
+.offline-text {
+  font-size: 28rpx;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* 卡片底部：操作按钮 */
+.card-footer {
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.unlock-btn {
+  flex: 1;
+  height: 96rpx;
+  border-radius: 100rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  /* border: none; */
+  
+  transition: all 0.2s ease;
+  line-height: 96rpx;
+  padding: 0;
+}
+
+/* 在线状态：纯色主按钮 */
+.btn-active {
+  background: #1989fa;
+  color: #ffffff;
+  box-shadow: 0 2rpx 8rpx rgba(25, 137, 250, 0.2);
+}
+
+.btn-active:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+
+/* 离线状态：灰色禁用按钮 */
+.btn-disabled {
+  background: #e8e8e8;
+  color: #bbbbbb;
+}
+
+.manage-btn {
+  width: 96rpx;
+  height: 96rpx;
+  padding: 0;
+  border-radius: 50%;
+  border: 2rpx solid #1989fa;
+  background: #ffffff;
+  color: #1989fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.manage-btn:active {
+  opacity: 0.85;
+  transform: translateY(1rpx);
+}
+
+.manage-arrow {
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* 空状态提示 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 200rpx 40rpx;
+}
+
+/* 扫码框线条图标（CSS 绘制 - 工业/科技感） */
+.empty-icon {
+  width: 120rpx;
+  height: 120rpx;
+  margin-bottom: 80rpx;
+  border: 4rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  position: relative;
+}
+
+/* 中间扫描线 */
+.empty-icon::before {
+  content: '';
+  position: absolute;
+  width: 70%;
+  height: 3rpx;
+  background: #e0e0e0;
+  top: 50%;
+  left: 15%;
+  transform: translateY(-50%);
+}
+
+.empty-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #333333;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+
+/* 分隔线区域 */
+.divider-section {
+  margin: 32rpx 0;
+  display: flex;
+  align-items: center;
+}
+
+.divider-line {
+  flex: 1;
+  height: 2rpx;
+  background: #e2e8f0;
+}
+
+.divider-text {
+  padding: 0 24rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+
+/* 扫码按钮 */
+.scan-btn-modal {
+  width: 100%;
+  /* height: 88rpx; */
+  background: #ffffff;
+  border: 2rpx solid #1989fa;
+  border-radius: 12rpx;
+  color: #1989fa;
+  font-size: 28rpx;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.scan-btn-modal::after {
+  border: none;
+}
+
+.scan-btn-modal:active {
+  background: #f0f9ff;
+}
