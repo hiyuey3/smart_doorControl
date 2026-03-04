@@ -21,9 +21,8 @@ Page({
     },
     
     // 视频相关（HTTP 快照模式）
-    videoFrame: '',  // 快照 URL
+    videoFrame: '',  // 快照 URL (实时或占位符)
     isSnapshotLoading: false,
-    snapshotLoadFailed: false,  // 快照加载失败标志
     
     // 设备信息
     deviceInfo: {
@@ -153,22 +152,22 @@ Page({
   },
 
   /**
-   * 第二部分：实时快照加载 + MJPEG 流支持（通过后端代理）
+   * 第二部分：实时快照加载（通过后端代理，自动处理占位符）
    */
   
   loadDeviceSnapshot(mac_address) {
-    console.log(' 加载设备实时快照 ');
+    console.log('[Snapshot] Loading device snapshot');
     
     const apiUrl = envConfig.getApiUrl();
     const token = wx.getStorageSync('token');
     const mac_clean = mac_address.replace(/:/g, '');
     
-    // 注意：WeChat 小程序 <video> 标签不原生支持 MJPEG
-    // 当前方案：使用快照轮询（每 10s 刷新）
-    // 未来升级：后端支持 MJPEG 流 (/api/device/stream/{mac})，可用于 WebRTC/HLS 转发
     const snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
     
-    // 使用后端代理 API 获取快照（支持权限验证 + 缓存 + 在线检查）
+    // 从后端代理获取快照或占位符
+    // - 若设备在线：返回实时快照
+    // - 若设备离线或超时：返回占位符 JPEG
+    // - 前端统一处理为图像显示
     wx.request({
       url: snapshotUrl,
       method: 'GET',
@@ -179,31 +178,27 @@ Page({
       timeout: 8000,
       success: (res) => {
         if (res.statusCode === 200) {
-          // 将二进制数据转换为 base64 URI
+          // 将二进制数据转换为 base64
           const arrayBuffer = res.data;
           const base64 = wx.arrayBufferToBase64(arrayBuffer);
           const imageUrl = 'data:image/jpeg;base64,' + base64;
           
+          // 获取图像来源（缓存/实时/占位符）
+          const source = res.header['x-frame-source'] || 'unknown';
+          console.log(`[Snapshot] Loaded from source: ${source}`);
+          
           this.setData({
             videoFrame: imageUrl,
-            isSnapshotLoading: false,
-            snapshotLoadFailed: false
+            isSnapshotLoading: false
           });
-          console.log('快照加载成功');
         } else {
-          console.error('快照加载失败，HTTP状态码:', res.statusCode);
-          this.setData({ 
-            isSnapshotLoading: false,
-            snapshotLoadFailed: true
-          });
+          console.warn('[Snapshot] Failed with status:', res.statusCode);
+          this.setData({ isSnapshotLoading: false });
         }
       },
       fail: (err) => {
-        console.error('快照加载失败:', err);
-        this.setData({ 
-          isSnapshotLoading: false,
-          snapshotLoadFailed: true
-        });
+        console.error('[Snapshot] Failed:', err);
+        this.setData({ isSnapshotLoading: false });
       }
     });
   },
