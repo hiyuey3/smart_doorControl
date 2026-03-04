@@ -15,8 +15,8 @@
 const char* mqtt_server = "mqtt.5i03.cn";
 const int mqtt_port = 1883;
 
-#define BACKEND_HOST "192.168.3.10"
-#define BACKEND_PORT 5000
+#define BACKEND_HOST "dev.api.5i03.cn"
+#define BACKEND_PORT 80
 #define UPLOAD_ENDPOINT "/api/device/upload_snapshot"
 
 #define DEVICE_SECRET "device_secret_key_v1"
