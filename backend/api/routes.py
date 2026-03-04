@@ -1263,7 +1263,8 @@ def device_action():
         'alarm': 'alarm',              # 报警
         'light': 'led_control',           # 摄像头控制（使用cam_trl命令）
         'query_status': 'query_status',# 查询状态
-        'reboot': 'reboot'             # 重启
+        'reboot': 'reboot',        # 重启
+        # 'test_led':'test_led'         # 测试ESP 32LED
     }
 
     cmd = actions.get(action_type)
@@ -1506,11 +1507,11 @@ def proxy_device_snapshot(mac_address):
     snapshot_url = current_app.config.get('DEVICE_SNAPSHOT_URL_TEMPLATE', 'http://192.168.3.161:81/stream?action=snapshot')
     
     try:
-        # 5. 请求ESP32快照
-        response = requests.get(snapshot_url, timeout=5)
+        # 5. 请求 ESP32 快照（超时改为 2 秒，快速失败）
+        response = requests.get(snapshot_url, timeout=2)
         response.raise_for_status()
         
-        # 6. 直接转发JPEG数据（不保存）
+        # 6. 直接转发 JPEG 数据（不保存）
         return Response(
             response.content,
             content_type='image/jpeg',
@@ -1521,9 +1522,13 @@ def proxy_device_snapshot(mac_address):
             }
         )
         
-    except requests.exceptions.Timeout:
-        return response_helper.error('设备响应超时', 'DEVICE_TIMEOUT', 504)
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout):
+        # ESP32 无响应，记录日志但不返回错误 - 前端使用占位图
+        print(f'[Snapshot] WARN: ESP32 timeout for {mac_standard}, returning placeholder')
+        current_app.logger.warning(f'Snapshot proxy timeout for {mac_standard}')
+        return response_helper.error('设备无响应，请检查连接', 'DEVICE_TIMEOUT', 503)
     except requests.exceptions.RequestException as e:
+        print(f'[Snapshot] ERROR: ESP32 proxy error for {mac_standard}: {e}')
         current_app.logger.error(f'Snapshot proxy error: {e}')
         return response_helper.error('获取快照失败', 'SNAPSHOT_FAILED', 503)
 
