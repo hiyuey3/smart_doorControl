@@ -21,7 +21,15 @@
         mode="aspectFill"
         bindload="onVideoLoad"
         binderror="onVideoError"
+        wx:if="{{!snapshotLoadFailed}}"
       ></image>
+
+      <!-- 占位图/错误提示 -->
+      <view class="video-placeholder" wx:if="{{snapshotLoadFailed}}">
+        <text class="placeholder-text">快照加载失败</text>
+        <text class="placeholder-hint">设备可能离线或无法连接</text>
+        <text class="placeholder-action" bindtap="handleStreamRefresh">点击重试</text>
+      </view>
 
       <!-- 离线遮罩 -->
       <view class="offline-mask" wx:if="{{device.status !== 'online'}}">

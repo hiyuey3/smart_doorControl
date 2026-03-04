@@ -23,6 +23,7 @@ Page({
     // 视频相关（HTTP 快照模式）
     videoFrame: '',  // 快照 URL
     isSnapshotLoading: false,
+    snapshotLoadFailed: false,  // 快照加载失败标志
     
     // 设备信息
     deviceInfo: {
@@ -170,6 +171,7 @@ Page({
         'Authorization': 'Bearer ' + token
       },
       responseType: 'arraybuffer',
+      timeout: 8000,  // 8秒超时（留给用户显示占位图）
       success: (res) => {
         if (res.statusCode === 200) {
           // 将二进制数据转换为 base64 URI
@@ -179,17 +181,25 @@ Page({
           
           this.setData({
             videoFrame: imageUrl,
-            isSnapshotLoading: false
+            isSnapshotLoading: false,
+            snapshotLoadFailed: false
           });
           console.log('快照加载成功');
         } else {
+          // 非 200 响应（504、404 等）
           console.error('快照加载失败，HTTP状态码:', res.statusCode);
-          this.setData({ isSnapshotLoading: false });
+          this.setData({ 
+            isSnapshotLoading: false,
+            snapshotLoadFailed: true
+          });
         }
       },
       fail: (err) => {
         console.error('快照加载失败:', err);
-        this.setData({ isSnapshotLoading: false });
+        this.setData({ 
+          isSnapshotLoading: false,
+          snapshotLoadFailed: true
+        });
       }
     });
   },
@@ -401,10 +411,10 @@ Page({
    */
   
   startSnapshotPolling(mac_address) {
-    // 每 3 秒刷新一次快照
+    // 每 10 秒刷新一次快照（降低频率避免 504 超时雪崩）
     this.snapshotPollingTimer = setInterval(() => {
       this.loadDeviceSnapshot(mac_address);
-    }, 3000);
+    }, 10000);
   },
 
   startStatusPolling() {
