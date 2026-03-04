@@ -155,102 +155,140 @@ Page({
   },
 
   /**
-   * 第二部分：实时快照加载（通过后端代理，自动处理占位符）
+   * 第二部分：实时快照加载（优先级策略）
    * 
-   * ⚠️ V3.1 重要变更：统一接收 JSON 格式的 Base64 数据
-   * - 后端现在返回 JSON: {success: true, data: {image_base64: "..."}}
-   * - 前端强制清理换行符（解决微信小程序黑屏问题）
-   * - 双重保险：后端去除换行符 + 前端额外清理
+   * 📌 V3.2 新特性：本地优先策略
+   * 优先级1（首选）：本地 ESP32 直连（http://local_ip:81/stream?action=snapshot）
+   *   - 优点：无网络延迟，实时性最好
+   *   - 缺点：依赖本地网络环境
+   * 
+   * 优先级2（备选）：后端代理（https://dev.api.5i03.cn/api/device/snapshot/<mac>）
+   *   - 优点：云端中继、支持异地访问
+   *   - 缺点：网络延迟可能较大
+   * 
+   * 优先级3（兜底）：占位符（校园门禁场景提示）
+   *   - 显示：离线提示、网络异常提示
    */
-  
+
   loadDeviceSnapshot(mac_address) {
-    console.log('[Snapshot] Loading device snapshot, source:', this.data.snapshotSource);
-    
-    const apiUrl = envConfig.getApiUrl();
-    const token = wx.getStorageSync('token');
-    const mac_clean = mac_address.replace(/:/g, '');
     const device = this.data.device;
+    const hasLocalIP = device.ip_address && device.ip_address.trim() !== '';
     
-    let snapshotUrl;
-    let needAuth = true;
+    console.log('[Snapshot] 加载策略：优先使用本地源');
     
-    if (this.data.snapshotSource === 'local' && device.ip_address) {
-      snapshotUrl = `http://${device.ip_address}:81/stream?action=snapshot`;
-      needAuth = false;
-      console.log('[Snapshot] Using local ESP32');
+    if (hasLocalIP) {
+      // ✅ 优先级1：尝试本地 ESP32 直连（超时3秒快速失败）
+      this.loadFromLocalESP32(device.ip_address, mac_address);
     } else {
-      snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
-      console.log('[Snapshot] Using backend proxy');
+      // 没有本地IP，直接跳到后端代理
+      console.log('[Snapshot] 设备无本地IP，跳转到后端代理');
+      this.loadFromBackendProxy(mac_address);
     }
+  },
+
+  loadFromLocalESP32(ip_address, mac_address) {
+    console.log(`[Snapshot] 尝试优先级1：本地 ESP32 (${ip_address}:81)`);
+    
+    const snapshotUrl = `http://${ip_address}:81/stream?action=snapshot`;
     
     wx.request({
       url: snapshotUrl,
       method: 'GET',
-      header: needAuth ? {
-        'Authorization': 'Bearer ' + token
-      } : {},
-      responseType: needAuth ? 'text' : 'arraybuffer',  // ✅ 后端返回 JSON，前端接收文本
-      timeout: 8000,
+      header: {},
+      responseType: 'arraybuffer',
+      timeout: 3000,  // ⚡ 本地源使用短超时（3秒），快速失败
       success: (res) => {
         if (res.statusCode === 200) {
-          let imageUrl;
-          let source = 'unknown';
-          
-          if (needAuth) {
-            // ✅ 解析 JSON 响应
-            try {
-              const jsonData = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-              
-              if (!jsonData.success || !jsonData.data || !jsonData.data.image_base64) {
-                console.error('[Snapshot] Invalid JSON response:', jsonData);
-                this.setData({ isSnapshotLoading: false });
-                return;
-              }
-              
-              // ✅ 核心修复：强制清理所有可能存在的换行符（\r\n）
-              // 微信小程序的 <image> 标签对 Base64 非常严格，
-              // 任何换行符都会导致图片渲染为灰块或黑屏
-              let rawBase64 = jsonData.data.image_base64;
-              let cleanBase64 = rawBase64.replace(/[\r\n]/g, "");  // 🔥 关键修复
-              
-              imageUrl = 'data:image/jpeg;base64,' + cleanBase64;
-              source = jsonData.data.source || 'proxy-source';
-              
-              console.log(`[Snapshot] Loaded from: ${source} (size: ${jsonData.data.size || 'unknown'} bytes)`);
-              if (jsonData.data.frame_age) {
-                console.log(`[Snapshot] Frame age: ${jsonData.data.frame_age}s`);
-              }
-            } catch (err) {
-              console.error('[Snapshot] JSON parse error:', err);
-              this.setData({ isSnapshotLoading: false });
-              return;
-            }
-          } else {
-            // 本地 ESP32 直连模式（仍然使用 arraybuffer）
-            const arrayBuffer = res.data;
-            const base64 = wx.arrayBufferToBase64(arrayBuffer);
-            
-            // ✅ 额外清理（即使是本地模式也执行，增强鲁棒性）
-            const cleanBase64 = base64.replace(/[\r\n]/g, "");
-            imageUrl = 'data:image/jpeg;base64,' + cleanBase64;
-            source = 'esp32-direct';
-            
-            console.log(`[Snapshot] Loaded from: ${source}`);
-          }
+          console.log('[Snapshot] ✅ 成功从本地 ESP32 获取快照');
+          const arrayBuffer = res.data;
+          const base64 = wx.arrayBufferToBase64(arrayBuffer);
+          const cleanBase64 = base64.replace(/[\r\n]/g, "");
           
           this.setData({
-            videoFrame: imageUrl,
-            isSnapshotLoading: false
+            videoFrame: 'data:image/jpeg;base64,' + cleanBase64,
+            isSnapshotLoading: false,
+            snapshotSource: 'local'
           });
         } else {
-          console.warn('[Snapshot] Failed with status:', res.statusCode);
-          this.setData({ isSnapshotLoading: false });
+          console.warn(`[Snapshot] ⚠️ 本地源返回异常状态 ${res.statusCode}，降级到后端`);
+          this.loadFromBackendProxy(mac_address);
         }
       },
       fail: (err) => {
-        console.error('[Snapshot] Failed:', err);
-        this.setData({ isSnapshotLoading: false });
+        console.warn(`[Snapshot] ⚠️ 本地源连接失败 (${err.errMsg})，降级到后端代理`);
+        this.loadFromBackendProxy(mac_address);
       }
+    });
+  },
+
+  loadFromBackendProxy(mac_address) {
+    console.log('[Snapshot] 尝试优先级2：后端代理');
+    
+    const apiUrl = envConfig.getApiUrl();
+    const token = wx.getStorageSync('token');
+    const mac_clean = mac_address.replace(/:/g, '');
+    const snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
+    
+    wx.request({
+      url: snapshotUrl,
+      method: 'GET',
+      header: {
+        'Authorization': 'Bearer ' + token
+      },
+      responseType: 'text',
+      timeout: 8000,  // 后端代理使用较长超时（8秒）
+      success: (res) => {
+        if (res.statusCode === 200) {
+          console.log('[Snapshot] ✅ 成功从后端代理获取快照');
+          
+          try {
+            const jsonData = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+            
+            if (!jsonData.success || !jsonData.data || !jsonData.data.image_base64) {
+              console.error('[Snapshot] JSON 响应无效:', jsonData);
+              this.loadFromPlaceholder('后端数据异常');
+              return;
+            }
+            
+            // ✅ 关键修复：强制清理所有可能存在的换行符
+            let rawBase64 = jsonData.data.image_base64;
+            let cleanBase64 = rawBase64.replace(/[\r\n]/g, "");
+            
+            this.setData({
+              videoFrame: 'data:image/jpeg;base64,' + cleanBase64,
+              isSnapshotLoading: false,
+              snapshotSource: 'proxy'
+            });
+            
+            const source = jsonData.data.source || 'proxy';
+            console.log(`[Snapshot] 数据来源：${source}`);
+            
+          } catch (err) {
+            console.error('[Snapshot] JSON 解析失败:', err);
+            this.loadFromPlaceholder('数据格式错误');
+          }
+        } else {
+          console.warn(`[Snapshot] ❌ 后端代理返回异常 ${res.statusCode}，显示离线提示`);
+          this.loadFromPlaceholder(`服务异常 (${res.statusCode})`);
+        }
+      },
+      fail: (err) => {
+        console.error(`[Snapshot] ❌ 后端代理连接失败 (${err.errMsg})，显示离线提示`);
+        this.loadFromPlaceholder('网络不可用');
+      }
+    });
+  },
+
+  loadFromPlaceholder(reason = '未知错误') {
+    console.log(`[Snapshot] 默认兜底：显示离线占位符 (${reason})`);
+    
+    // 创建一个简单的离线提示图片（灰色背景）
+    const placeholderBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQIW2NgAAIAAAUAAdafFs0AAAAASUVORK5CYII=';
+    
+    this.setData({
+      videoFrame: 'data:image/jpeg;base64,' + placeholderBase64,
+      isSnapshotLoading: false,
+      snapshotSource: 'placeholder'
     });
   },
 
