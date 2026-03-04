@@ -16,7 +16,7 @@ const DEFAULT_LOCAL_CONFIG = {
   // API 配置
   api: {
     // 初始 API 地址（用于首次获取完整配置）
-    baseUrl: 'http://127.0.0.1:5001/api',
+    baseUrl: 'https://dev.api.5i03.cn/api',
     timeout: 10000,
     debug: true,
     retryCount: 3
@@ -40,7 +40,7 @@ const DEFAULT_LOCAL_CONFIG = {
   
   // 第三方服务
   servers: {
-    video_stream: 'http://192.168.3.161:81/stream',
+    video_stream: 'https://dev.api.5i03.cn/api/device/snapshot',  // 通过后端 API 代理获取快照
     mqtt: {
       broker: 'mqtt.5i03.cn',
       port: 1883

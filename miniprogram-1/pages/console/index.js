@@ -23,7 +23,7 @@ Page({
     
     // 获取视频流地址
     this.setData({
-      videoStreamUrl: app.globalData.config?.servers?.video_stream || 'http://192.168.3.161:81/stream'
+      videoStreamUrl: app.globalData.config?.servers?.video_stream || 'https://dev.api.5i03.cn/api/device/snapshot'
     });
     
     this.loadDevices();
