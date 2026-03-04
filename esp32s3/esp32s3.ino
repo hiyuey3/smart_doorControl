@@ -3,6 +3,7 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <time.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
 
@@ -73,6 +74,16 @@ void framework_network_init() {
   Serial.println("\nWiFi Connected");
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
+  
+  // NTP Time Sync
+  configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
+  Serial.println("Syncing time with NTP...");
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo, 10000)) {
+    Serial.println("Time synced successfully");
+  } else {
+    Serial.println("Failed to sync time, will retry later");
+  }
 }
 
 // Camera Power Management
@@ -296,7 +307,23 @@ void loop() {
   static unsigned long last_h = 0;
   if (millis() - last_h > 15000) {
     if (mqttClient.connected()) {
-      mqttClient.publish(topic_pub.c_str(), "{\"type\":\"heartbeat\"}");
+      // 构建带有时间戳的心跳消息
+      StaticJsonDocument<256> doc;
+      doc["type"] = "heartbeat";
+      doc["uptime"] = millis() / 1000; // 设备运行时间（秒）
+      doc["count"] = ++heartbeat_count;
+      
+      // 添加 UTC 时间戳（如果时间已同步）
+      struct tm timeinfo;
+      if (getLocalTime(&timeinfo, 100)) {
+        char timestamp[25];
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+        doc["timestamp"] = timestamp;
+      }
+      
+      String payload;
+      serializeJson(doc, payload);
+      mqttClient.publish(topic_pub.c_str(), payload.c_str());
     }
     last_h = millis();
   }
