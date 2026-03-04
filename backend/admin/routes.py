@@ -169,50 +169,112 @@ def permissions():
     # 统计待审批数量
     pending_count = UserDevicePermission.query.filter_by(status='pending').count()
     
+    # 获取用户和设备列表（用于添加权限的下拉框）
+    users = User.query.order_by(User.created_at.desc()).all()
+    devices = Device.query.all()
+    
     return render_template('admin/permissions.html', 
                          permissions=permissions, 
                          status_filter=status_filter,
-                         pending_count=pending_count)
+                         pending_count=pending_count,
+                         users=users,
+                         devices=devices)
 
 
-@web_bp.route('/permissions/<int:permission_id>', methods=['POST'])
+@web_bp.route('/permissions/add', methods=['POST'])
 @login_required
-def update_permission(permission_id):
-    """更新权限状态（RESTful：POST /permissions/<id>，通过action参数区分approve/reject）"""
-    permission = UserDevicePermission.query.get_or_404(permission_id)
-    action = request.form.get('action')  # 'approve' 或 'reject'
-    
-    # 验证权限状态
-    if permission.status != 'pending':
-        return render_template('admin/permissions.html',
-                             permissions=UserDevicePermission.query.order_by(
-                                 UserDevicePermission.apply_time.desc()).all(),
-                             status_filter='all',
-                             pending_count=UserDevicePermission.query.filter_by(status='pending').count(),
-                             error='该申请已处理')
-    
-    # 验证操作类型
-    if action not in ['approve', 'reject']:
-        return render_template('admin/permissions.html',
-                             permissions=UserDevicePermission.query.order_by(
-                                 UserDevicePermission.apply_time.desc()).all(),
-                             status_filter='all',
-                             pending_count=UserDevicePermission.query.filter_by(status='pending').count(),
-                             error='无效的操作')
+def add_permission():
+    """添加新的用户设备权限（管理员主动分配）"""
+    user_id = request.form.get('user_id')
+    device_mac = request.form.get('device_mac')
+    status = request.form.get('status', 'approved')  # 默认已批准
     
     try:
-        # 更新权限状态
-        permission.status = 'approved' if action == 'approve' else 'rejected'
-        permission.review_time = datetime.utcnow()
-        permission.reviewed_by = session.get('admin_id')
+        # 检查用户和设备是否存在
+        user = User.query.get_or_404(user_id)
+        device = Device.query.filter_by(mac_address=device_mac).first()
+        if not device:
+            raise ValueError(f'设备不存在: {device_mac}')
+        
+        # 检查是否已存在相同权限
+        existing = UserDevicePermission.query.filter_by(
+            user_id=user_id, device_mac=device_mac
+        ).first()
+        if existing:
+            raise ValueError(f'该用户已有此设备的权限')
+        
+        # 创建新权限
+        permission = UserDevicePermission(
+            user_id=int(user_id),
+            device_mac=device_mac,
+            status=status
+        )
+        
+        # 如果是直接批准，记录审批信息
+        if status == 'approved':
+            permission.review_time = datetime.utcnow()
+            permission.reviewed_by = session.get('admin_id')
+        
+        db.session.add(permission)
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         return render_template('admin/permissions.html',
                              permissions=UserDevicePermission.query.order_by(
                                  UserDevicePermission.apply_time.desc()).all(),
+                             users=User.query.order_by(User.created_at.desc()).all(),
+                             devices=Device.query.all(),
                              status_filter='all',
                              pending_count=UserDevicePermission.query.filter_by(status='pending').count(),
-                             error=f'审批失败: {str(e)}')
+                             error=f'添加权限失败: {str(e)}')
+    
+    return redirect(url_for('web.permissions'))
+
+
+@web_bp.route('/permissions/<int:permission_id>', methods=['POST'])
+@login_required
+def update_permission(permission_id):
+    """更新权限状态或信息（RESTful：POST /permissions/<id>，通过action参数区分操作）"""
+    permission = UserDevicePermission.query.get_or_404(permission_id)
+    action = request.form.get('action')  # 'approve', 'reject', 'revoke' 等
+    
+    try:
+        # 根据操作类型处理
+        if action == 'approve':
+            # 批准待审批申请
+            if permission.status != 'pending':
+                raise ValueError('只能批准待审批的申请')
+            permission.status = 'approved'
+            permission.review_time = datetime.utcnow()
+            permission.reviewed_by = session.get('admin_id')
+        
+        elif action == 'reject':
+            # 拒绝待审批申请
+            if permission.status != 'pending':
+                raise ValueError('只能拒绝待审批的申请')
+            permission.status = 'rejected'
+            permission.review_time = datetime.utcnow()
+            permission.reviewed_by = session.get('admin_id')
+        
+        elif action == 'revoke':
+            # 撤销已批准的权限
+            if permission.status != 'approved':
+                raise ValueError('只能撤销已批准的权限')
+            db.session.delete(permission)
+        
+        else:
+            raise ValueError(f'无效的操作: {action}')
+        
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return render_template('admin/permissions.html',
+                             permissions=UserDevicePermission.query.order_by(
+                                 UserDevicePermission.apply_time.desc()).all(),
+                             users=User.query.order_by(User.created_at.desc()).all(),
+                             devices=Device.query.all(),
+                             status_filter='all',
+                             pending_count=UserDevicePermission.query.filter_by(status='pending').count(),
+                             error=f'操作失败: {str(e)}')
     
     return redirect(url_for('web.permissions'))

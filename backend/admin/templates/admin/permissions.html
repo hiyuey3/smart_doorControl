@@ -18,10 +18,10 @@
 <div class="card">
     <div class="card-header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>筛选条件</span>
-            {% if pending_count > 0 %}
-            <span class="badge badge-warning">待审批 {{ pending_count }}</span>
-            {% endif %}
+            <span>权限管理</span>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPermissionModal">
+                添加权限
+            </button>
         </div>
     </div>
     <div style="display: flex; gap: 12px;">
@@ -102,6 +102,16 @@
                             <button type="submit" class="btn btn-sm btn-danger">拒绝</button>
                         </form>
                     </div>
+                    {% elif permission.status == 'approved' %}
+                    <div style="display: inline-flex; gap: 8px;">
+                        <!-- 撤销权限表单 -->
+                        <form method="POST" action="{{ url_for('web.update_permission', permission_id=permission.id) }}" 
+                              onsubmit="return confirm('确定撤销此权限吗？')" 
+                              style="display: inline;">
+                            <input type="hidden" name="action" value="revoke">
+                            <button type="submit" class="btn btn-sm btn-danger">撤销</button>
+                        </form>
+                    </div>
                     {% else %}
                     <span class="text-muted">已处理</span>
                     {% endif %}
@@ -144,4 +154,50 @@
         font-size: 13px;
     }
 </style>
+
+<!-- 添加权限模态框 -->
+<div class="modal fade" id="addPermissionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('web.add_permission') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加权限</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">选择用户</label>
+                        <select class="form-select" name="user_id" required>
+                            <option value="">-- 请选择用户 --</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}">{{ user.name }} ({{ user.username }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择设备</label>
+                        <select class="form-select" name="device_mac" required>
+                            <option value="">-- 请选择设备 --</option>
+                            {% for device in devices %}
+                            <option value="{{ device.mac_address }}">{{ device.location }} ({{ device.mac_address }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">权限状态</label>
+                        <select class="form-select" name="status">
+                            <option value="approved" selected>已批准</option>
+                            <option value="pending">待审批</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
