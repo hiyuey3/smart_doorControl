@@ -17,6 +17,58 @@ import os
 MAC_PATTERN = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
 
 
+def normalize_mac(mac_raw):
+    """
+    统一 MAC 地址格式（全栈标准化）
+    
+    解决问题：ESP32 传来的 MAC 可能带冒号（AA:BB:CC:DD:EE:FF），
+             小程序请求时可能不带冒号（AABBCCDDEEFF），
+             导致后端缓存 Cache MISS。
+    
+    标准化规则：
+    1. 移除所有冒号（:）、短横线（-）、空格
+    2. 转换为全大写
+    3. 验证长度为 12 个字符
+    4. 返回带冒号的标准格式（AA:BB:CC:DD:EE:FF）
+    
+    参数：
+        mac_raw (str): 原始 MAC 地址（任意格式）
+    
+    返回：
+        tuple: (标准化MAC地址, 错误信息)
+               成功：('AA:BB:CC:DD:EE:FF', None)
+               失败：(None, '错误描述')
+    
+    示例：
+        >>> normalize_mac('aa:bb:cc:dd:ee:ff')
+        ('AA:BB:CC:DD:EE:FF', None)
+        >>> normalize_mac('AABBCCDDEEFF')
+        ('AA:BB:CC:DD:EE:FF', None)
+        >>> normalize_mac('AA-BB-CC-DD-EE-FF')
+        ('AA:BB:CC:DD:EE:FF', None)
+        >>> normalize_mac('invalid')
+        (None, 'MAC 地址格式无效')
+    """
+    if not mac_raw:
+        return None, '缺少 MAC 地址'
+    
+    # 移除所有分隔符，转为大写
+    mac_clean = mac_raw.replace(':', '').replace('-', '').replace(' ', '').upper()
+    
+    # 验证长度
+    if len(mac_clean) != 12:
+        return None, f'MAC 地址长度无效（期望 12 位，实际 {len(mac_clean)} 位）'
+    
+    # 验证是否为16进制字符
+    if not all(c in '0123456789ABCDEF' for c in mac_clean):
+        return None, 'MAC 地址包含非法字符'
+    
+    # 转换为标准格式（带冒号）
+    mac_standard = ':'.join([mac_clean[i:i+2] for i in range(0, 12, 2)])
+    
+    return mac_standard, None
+
+
 def _generate_placeholder_jpeg():
     """
     生成最小的有效 JPEG 占位符（1x1 灰色像素）
@@ -1467,20 +1519,35 @@ def proxy_device_snapshot(mac_address):
     2. 内存缓存 device_frames（次优，由ESP32主动推送）
     3. 本地ESP32直连（备选，用于开发测试）
     
+    ⚠️ V3.1 重要变更：统一返回 JSON 格式的 Base64 编码数据
+    - 解决微信小程序 Base64 渲染黑屏问题
+    - 后端强制去除换行符，前端额外清理（双重保险）
+    
     请求示例：
     GET /api/device/snapshot/ACA704260CFC
+    
+    响应格式：
+    {
+      "success": true,
+      "data": {
+        "image_base64": "...",  # 纯净的Base64字符串（无换行符）
+        "source": "cache",      # 数据来源
+        "frame_age": 1.2        # 快照年龄（秒）
+      }
+    }
     """
+    import base64
     from app import device_frames
     from time import time
     
     current_user = g.current_user
     
-    # 将 MAC 地址转换为标准格式（带冒号）
-    mac_clean = mac_address.replace(':', '').upper()
-    if len(mac_clean) != 12:
-        return response_helper.bad_request('MAC 地址格式错误', 'INVALID_MAC_FORMAT')
+    # ✅ 使用统一的 MAC 地址标准化函数（避免 Cache MISS）
+    mac_standard, error = normalize_mac(mac_address)
+    if error:
+        return response_helper.bad_request(f'MAC 地址格式错误: {error}', 'INVALID_MAC_FORMAT')
     
-    mac_standard = ':'.join([mac_clean[i:i+2] for i in range(0, 12, 2)])
+    current_app.logger.info(f'[Snapshot] Request for {mac_address} -> {mac_standard}')
     
     # 1. 验证权限
     error_resp = permission_helper.check_device_access(current_user, mac_standard)
@@ -1500,10 +1567,16 @@ def proxy_device_snapshot(mac_address):
             response = requests.get(cloud_relay_url, timeout=3)
             response.raise_for_status()
             print(f'[Snapshot] Got cloud relay snapshot ({len(response.content)} bytes)')
-            return Response(
-                response.content,
-                content_type='image/jpeg',
-                headers={'X-Frame-Source': 'cloud-relay'}
+            
+            # ✅ 转换为 Base64（无换行符）
+            base64_data = base64.b64encode(response.content).decode('utf-8')
+            return response_helper.success(
+                data={
+                    'image_base64': base64_data,
+                    'source': 'cloud-relay',
+                    'size': len(response.content)
+                },
+                message='快照获取成功'
             )
         except Exception as e:
             print(f'[Snapshot] Cloud relay failed, falling back to cache/local: {e}')
@@ -1517,14 +1590,17 @@ def proxy_device_snapshot(mac_address):
         # 如果快照在5分钟以内，直接返回
         if frame_age < 300:  # 300 秒 = 5 分钟
             print(f'[Snapshot] Cache HIT for {mac_standard} (age: {frame_age:.1f}s)')
-            return Response(
-                frame_data['data'],
-                content_type='image/jpeg',
-                headers={
-                    'Cache-Control': 'no-cache',
-                    'X-Frame-Source': 'cache',
-                    'X-Frame-Age': str(int(frame_age))
-                }
+            
+            # ✅ 转换为 Base64（无换行符）
+            base64_data = base64.b64encode(frame_data['data']).decode('utf-8')
+            return response_helper.success(
+                data={
+                    'image_base64': base64_data,
+                    'source': 'cache',
+                    'frame_age': round(frame_age, 2),
+                    'size': frame_data.get('size', len(frame_data['data']))
+                },
+                message='快照获取成功'
             )
         else:
             # 快照过期，从字典中移除
@@ -1536,10 +1612,14 @@ def proxy_device_snapshot(mac_address):
     if device.status != 'online':
         print(f'[Snapshot] Device offline, returning placeholder for {mac_standard}')
         placeholder = _generate_placeholder_jpeg()
-        return Response(
-            placeholder,
-            content_type='image/jpeg',
-            headers={'X-Frame-Source': 'placeholder-offline'}
+        base64_data = base64.b64encode(placeholder).decode('utf-8')
+        return response_helper.success(
+            data={
+                'image_base64': base64_data,
+                'source': 'placeholder-offline',
+                'size': len(placeholder)
+            },
+            message='设备离线，返回占位符'
         )
     
     # 优先从数据库获取设备的IP地址，否则使用默认配置
@@ -1554,32 +1634,44 @@ def proxy_device_snapshot(mac_address):
         response.raise_for_status()
         
         print(f'[Snapshot] Got local ESP32 snapshot from {device_ip} ({len(response.content)} bytes)')
-        return Response(
-            response.content,
-            content_type='image/jpeg',
-            headers={
-                'X-Frame-Source': 'esp32-local',
-                'X-Device-IP': device_ip
-            }
+        
+        # ✅ 转换为 Base64（无换行符）
+        base64_data = base64.b64encode(response.content).decode('utf-8')
+        return response_helper.success(
+            data={
+                'image_base64': base64_data,
+                'source': 'esp32-local',
+                'device_ip': device_ip,
+                'size': len(response.content)
+            },
+            message='快照获取成功'
         )
         
     except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout) as e:
         print(f'[Snapshot] TIMEOUT for {mac_standard}: {e}')
         # 返回占位符而非 503
         placeholder = _generate_placeholder_jpeg()
-        return Response(
-            placeholder,
-            content_type='image/jpeg',
-            headers={'X-Frame-Source': 'placeholder-timeout'}
+        base64_data = base64.b64encode(placeholder).decode('utf-8')
+        return response_helper.success(
+            data={
+                'image_base64': base64_data,
+                'source': 'placeholder-timeout',
+                'size': len(placeholder)
+            },
+            message='设备超时，返回占位符'
         )
     except requests.exceptions.RequestException as e:
         print(f'[Snapshot] ERROR for {mac_standard}: {e}')
         # 返回占位符而非 503
         placeholder = _generate_placeholder_jpeg()
-        return Response(
-            placeholder,
-            content_type='image/jpeg',
-            headers={'X-Frame-Source': 'placeholder-error'}
+        base64_data = base64.b64encode(placeholder).decode('utf-8')
+        return response_helper.success(
+            data={
+                'image_base64': base64_data,
+                'source': 'placeholder-error',
+                'size': len(placeholder)
+            },
+            message='设备错误，返回占位符'
         )
 
 
@@ -1625,15 +1717,14 @@ def upload_device_snapshot():
         if not mac_raw:
             return response_helper.bad_request('缺少 X-Device-MAC 请求头', 'MISSING_DEVICE_MAC')
         
-        # 标准化 MAC 地址格式
-        mac_clean = mac_raw.replace(':', '').replace('-', '').upper()
-        if len(mac_clean) != 12:
-            return response_helper.bad_request('MAC 地址格式无效', 'INVALID_MAC_FORMAT')
+        # 标准化 MAC 地址格式（统一格式，避免 Cache MISS）
+        mac_standard, error = normalize_mac(mac_raw)
+        if error:
+            return response_helper.bad_request(f'MAC 地址格式错误: {error}', 'INVALID_MAC_FORMAT')
         
-        # 转换为标准格式
-        mac_standard = ':'.join([mac_clean[i:i+2] for i in range(0, 12, 2)])
+        current_app.logger.info(f'[Snapshot] Upload request from {mac_raw} -> {mac_standard}')
         
-        # 2. 验证设备是否存在（可选，取决于是否需要严格幺鉴）
+        # 2. 验证设备是否存在（可选，取决于是否需要严格鉴权）
         device, error = db_helper.get_by_filter(Device, mac_address=mac_standard)
         if error or not device:
             # 可以选择直接拒绝，或允许设备自注册

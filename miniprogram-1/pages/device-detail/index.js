@@ -156,6 +156,11 @@ Page({
 
   /**
    * 第二部分：实时快照加载（通过后端代理，自动处理占位符）
+   * 
+   * ⚠️ V3.1 重要变更：统一接收 JSON 格式的 Base64 数据
+   * - 后端现在返回 JSON: {success: true, data: {image_base64: "..."}}
+   * - 前端强制清理换行符（解决微信小程序黑屏问题）
+   * - 双重保险：后端去除换行符 + 前端额外清理
    */
   
   loadDeviceSnapshot(mac_address) {
@@ -167,8 +172,11 @@ Page({
     const device = this.data.device;
     
     let snapshotUrl;
+    let needAuth = true;
+    
     if (this.data.snapshotSource === 'local' && device.ip_address) {
       snapshotUrl = `http://${device.ip_address}:81/stream?action=snapshot`;
+      needAuth = false;
       console.log('[Snapshot] Using local ESP32');
     } else {
       snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
@@ -178,21 +186,57 @@ Page({
     wx.request({
       url: snapshotUrl,
       method: 'GET',
-      header: this.data.snapshotSource === 'local' ? {} : {
+      header: needAuth ? {
         'Authorization': 'Bearer ' + token
-      },
-      responseType: 'arraybuffer',
+      } : {},
+      responseType: needAuth ? 'text' : 'arraybuffer',  // ✅ 后端返回 JSON，前端接收文本
       timeout: 8000,
       success: (res) => {
         if (res.statusCode === 200) {
-          // 将二进制数据转换为 base64
-          const arrayBuffer = res.data;
-          const base64 = wx.arrayBufferToBase64(arrayBuffer);
-          const imageUrl = 'data:image/jpeg;base64,' + base64;
+          let imageUrl;
+          let source = 'unknown';
           
-          const source = res.header['x-frame-source'] || 
-                        (this.data.snapshotSource === 'local' ? 'esp32-direct' : 'proxy-source');
-          console.log(`[Snapshot] Loaded from: ${source}`);
+          if (needAuth) {
+            // ✅ 解析 JSON 响应
+            try {
+              const jsonData = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+              
+              if (!jsonData.success || !jsonData.data || !jsonData.data.image_base64) {
+                console.error('[Snapshot] Invalid JSON response:', jsonData);
+                this.setData({ isSnapshotLoading: false });
+                return;
+              }
+              
+              // ✅ 核心修复：强制清理所有可能存在的换行符（\r\n）
+              // 微信小程序的 <image> 标签对 Base64 非常严格，
+              // 任何换行符都会导致图片渲染为灰块或黑屏
+              let rawBase64 = jsonData.data.image_base64;
+              let cleanBase64 = rawBase64.replace(/[\r\n]/g, "");  // 🔥 关键修复
+              
+              imageUrl = 'data:image/jpeg;base64,' + cleanBase64;
+              source = jsonData.data.source || 'proxy-source';
+              
+              console.log(`[Snapshot] Loaded from: ${source} (size: ${jsonData.data.size || 'unknown'} bytes)`);
+              if (jsonData.data.frame_age) {
+                console.log(`[Snapshot] Frame age: ${jsonData.data.frame_age}s`);
+              }
+            } catch (err) {
+              console.error('[Snapshot] JSON parse error:', err);
+              this.setData({ isSnapshotLoading: false });
+              return;
+            }
+          } else {
+            // 本地 ESP32 直连模式（仍然使用 arraybuffer）
+            const arrayBuffer = res.data;
+            const base64 = wx.arrayBufferToBase64(arrayBuffer);
+            
+            // ✅ 额外清理（即使是本地模式也执行，增强鲁棒性）
+            const cleanBase64 = base64.replace(/[\r\n]/g, "");
+            imageUrl = 'data:image/jpeg;base64,' + cleanBase64;
+            source = 'esp32-direct';
+            
+            console.log(`[Snapshot] Loaded from: ${source}`);
+          }
           
           this.setData({
             videoFrame: imageUrl,
