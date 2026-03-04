@@ -249,6 +249,7 @@ void poll_frame_upload() {
     Serial.printf("[Upload] OK: Snapshot uploaded (%d bytes, total: %lu)\n", fb->len, frame_upload_state.total_uploads);
   } else {
     Serial.printf("[Upload] FAIL: HTTP %d, retries: %d\n", http_code, frame_upload_state.consecutive_failures++);
+  }
 
   esp_camera_fb_return(fb);
   http.end();
