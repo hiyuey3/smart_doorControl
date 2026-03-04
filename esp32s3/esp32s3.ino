@@ -237,11 +237,13 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   }
 
   // Determine response type
-  const char *action = httpd_req_get_url_query_str(req);
+  char query_buf[64] = {0};
   bool is_snapshot_only = false;
   
-  if (action && strstr(action, "action=snapshot") != NULL) {
-    is_snapshot_only = true;
+  if (httpd_req_get_url_query_str(req, query_buf, sizeof(query_buf)) == ESP_OK) {
+    if (strstr(query_buf, "action=snapshot") != NULL) {
+      is_snapshot_only = true;
+    }
   }
 
   if (is_snapshot_only) {
@@ -324,8 +326,9 @@ void diagnose_network_connectivity() {
   Serial.printf("[Diagnostic] Local Stream: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
   
   // Try to resolve hostname
-  IPAddress serverIP = WiFi.hostByName(BACKEND_HOST);
-  if (serverIP == (uint32_t)0) {
+  IPAddress serverIP;
+  int dns_result = WiFi.hostByName(BACKEND_HOST, serverIP);
+  if (dns_result == 0) {
     Serial.printf("[Diagnostic] DNS Resolution FAILED for %s\n", BACKEND_HOST);
   } else {
     Serial.printf("[Diagnostic] DNS Resolved %s -> %s\n", BACKEND_HOST, serverIP.toString().c_str());
