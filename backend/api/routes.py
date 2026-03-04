@@ -637,10 +637,18 @@ def unlock_device(mac_address):
     """
     current_user = g.current_user
 
-    # 使用工具类进行权限检查
-    error = permission_helper.check_device_access(current_user, mac_address)
+    # 标准化 MAC 地址格式（支持带冒号和不带冒号的输入）
+    mac_normalized, error = normalize_mac(mac_address)
     if error:
-        return response_helper.error(error[0]['message'], error[0]['error_code'], error[1])
+        return response_helper.bad_request(f'MAC 地址格式错误: {error}')
+    
+    # 使用标准化后的 MAC 地址
+    mac_address = mac_normalized
+
+    # 使用工具类进行权限检查
+    error_result, error_code = permission_helper.check_device_access(current_user, mac_address)
+    if error_result:
+        return response_helper.error(error_result['message'], error_result['error_code'], error_code)
 
     # 使用工具类获取设备
     device, error = db_helper.get_by_filter(Device, mac_address=mac_address)

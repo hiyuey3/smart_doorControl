@@ -126,6 +126,9 @@ Page({
     }
 
     const apiUrl = envConfig.getApiUrl();
+    
+    // 移除MAC地址中的冒号，统一使用无冒号格式（如 ACA704260CFC）
+    const macWithoutColon = mac.replace(/:/g, '');
 
     wx.showLoading({
       title: '发送开锁指令...',
@@ -133,7 +136,7 @@ Page({
     });
 
     wx.request({
-      url: apiUrl + '/devices/' + mac + '/unlock',
+      url: apiUrl + '/devices/' + macWithoutColon + '/unlock',
       method: 'POST',
       header: {
         'Content-Type': 'application/json',

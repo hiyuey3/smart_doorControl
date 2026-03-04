@@ -21,9 +21,9 @@ const int mqtt_port = 1883;
 
 #define DEVICE_SECRET "device_secret_key_v1"
 #define UPLOAD_INTERVAL_MS 1000  // 1秒上传一次
-
-#define LED_BUILT_IN 2
-#define STM_RX_PIN 21   
+// 已经测试没有占用好的接口
+#define LED_BUILT_IN 2// 已经测试没有占用好的接口，不要动
+#define STM_RX_PIN 21   // 已经测试没有占用好的接口不要动
 #define STM_TX_PIN 4  
 HardwareSerial SerialSTM(1);
 
@@ -230,11 +230,18 @@ void mqtt_task(void* pv) {
 
 // HTTP Upload Task
 void poll_frame_upload() {
+  // 检查前置条件
+  if (!is_camera_active) return;  // 相机未初始化
+  if (WiFi.status() != WL_CONNECTED) return;  // WiFi未连接
+  
   unsigned long now = millis();
   if (now - frame_upload_state.last_upload_time < UPLOAD_INTERVAL_MS || frame_upload_state.is_uploading) return;
 
   camera_fb_t* fb = esp_camera_fb_get();
-  if (!fb) return;
+  if (!fb) {
+    Serial.println("[Upload] ERROR: Failed to capture frame");
+    return;
+  }
 
   frame_upload_state.is_uploading = true;
   String url = "http://" + String(BACKEND_HOST) + ":" + String(BACKEND_PORT) + UPLOAD_ENDPOINT;
@@ -244,13 +251,25 @@ void poll_frame_upload() {
   http.addHeader("Content-Type", "image/jpeg");
   http.addHeader("X-Device-MAC", WiFi.macAddress());  // 格式：AA:BB:CC:DD:EE:FF
   http.addHeader("X-Device-Secret", DEVICE_SECRET);
+  http.setTimeout(5000);  // 设置5秒超时
 
+  Serial.printf("[Upload] Uploading %d bytes to %s\n", fb->len, url.c_str());
   int http_code = http.POST(fb->buf, fb->len);
   if (http_code == 200) {
+    frame_upload_state.consecutive_failures = 0;  // 重置失败计数
     frame_upload_state.total_uploads++;
-    Serial.printf("[Upload] OK: Snapshot uploaded (%d bytes, total: %lu)\n", fb->len, frame_upload_state.total_uploads);
+    frame_upload_state.total_bytes += fb->len;
+    Serial.printf("[Upload] OK: Snapshot uploaded (%d bytes, total: %lu, avg: %.1f KB)\n", 
+                  fb->len, frame_upload_state.total_uploads, 
+                  (float)frame_upload_state.total_bytes / frame_upload_state.total_uploads / 1024);
+  } else if (http_code > 0) {
+    frame_upload_state.consecutive_failures++;
+    Serial.printf("[Upload] FAIL: HTTP %d, body: %s, failures: %d\n", 
+                  http_code, http.getString().c_str(), frame_upload_state.consecutive_failures);
   } else {
-    Serial.printf("[Upload] FAIL: HTTP %d, retries: %d\n", http_code, frame_upload_state.consecutive_failures++);
+    frame_upload_state.consecutive_failures++;
+    Serial.printf("[Upload] ERROR: Connection failed (code: %d), failures: %d\n", 
+                  http_code, frame_upload_state.consecutive_failures);
   }
 
   esp_camera_fb_return(fb);
@@ -302,6 +321,16 @@ void setup() {
   });
 
   xTaskCreateUniversal(mqtt_task, "mqtt", 8192, NULL, 1, NULL, 0);
+  
+  // 初始化相机用于快照上传
+  Serial.println("Initializing camera...");
+  esp_err_t camera_init_result = manage_camera_power(true);
+  if (camera_init_result == ESP_OK) {
+    Serial.println("[Camera] Initialized successfully, snapshot upload enabled");
+  } else {
+    Serial.printf("[Camera] FAILED to initialize (error: 0x%x), snapshot upload disabled\n", camera_init_result);
+  }
+  
   Serial.println("System Running.");
 }
 
