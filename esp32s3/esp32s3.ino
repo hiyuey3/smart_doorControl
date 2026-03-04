@@ -228,14 +228,131 @@ void mqtt_task(void* pv) {
   }
 }
 
+// HTTP Stream Handler - MJPEG server for local /stream endpoint
+static esp_err_t stream_handler(httpd_req_t *req) {
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
+  }
+
+  // Determine response type
+  const char *action = httpd_req_get_url_query_str(req);
+  bool is_snapshot_only = false;
+  
+  if (action && strstr(action, "action=snapshot") != NULL) {
+    is_snapshot_only = true;
+  }
+
+  if (is_snapshot_only) {
+    // Single snapshot response
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=snapshot.jpg");
+    httpd_resp_send(req, (const char *)fb->buf, fb->len);
+  } else {
+    // MJPEG stream response
+    httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
+    
+    while (WiFi.isConnected()) {
+      camera_fb_t *frame = esp_camera_fb_get();
+      if (!frame) {
+        Serial.println("[Stream] Failed to get frame");
+        break;
+      }
+
+      size_t hlen = snprintf((char *)fb->buf, 64,
+                            "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+                            frame->len);
+      
+      if (httpd_resp_send_chunk(req, (const char *)fb->buf, hlen) != ESP_OK ||
+          httpd_resp_send_chunk(req, (const char *)frame->buf, frame->len) != ESP_OK ||
+          httpd_resp_send_chunk(req, "\r\n--frame\r\n", 10) != ESP_OK) {
+        esp_camera_fb_return(frame);
+        break;
+      }
+      
+      esp_camera_fb_return(frame);
+      delay(10);  // Small delay between frames
+    }
+  }
+
+  esp_camera_fb_return(fb);
+  return ESP_OK;
+}
+
+// Start HTTP server with stream endpoint
+void start_httpd() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 81;
+  config.ctrl_port = 8000;
+  config.max_open_sockets = 3;
+  config.backlog_conn = 2;
+  
+  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+    httpd_uri_t uri_handler = {
+      .uri = "/stream",
+      .method = HTTP_GET,
+      .handler = stream_handler,
+      .user_ctx = NULL
+    };
+    
+    if (httpd_register_uri_handler(stream_httpd, &uri_handler) == ESP_OK) {
+      Serial.println("[Stream] HTTP server started on port 81, endpoint: /stream");
+      Serial.println("[Stream] Access: http://device_ip:81/stream for MJPEG");
+      Serial.println("[Stream] Access: http://device_ip:81/stream?action=snapshot for single snapshot");
+    } else {
+      Serial.println("[Stream] Failed to register URI handler");
+    }
+  } else {
+    Serial.println("[Stream] Failed to start HTTP server");
+  }
+}
+
+// Diagnostic function for network connectivity
+void diagnose_network_connectivity() {
+  static unsigned long last_diagnose = 0;
+  unsigned long now = millis();
+  
+  if (now - last_diagnose < 30000) return;  // Diagnose every 30 seconds
+  last_diagnose = now;
+  
+  Serial.println("[Diagnostic] ===== Network Connectivity Check =====");
+  Serial.printf("[Diagnostic] WiFi Status: %d (3=Connected)\n", WiFi.status());
+  Serial.printf("[Diagnostic] IP Address: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("[Diagnostic] Signal Strength: %d dBm\n", WiFi.RSSI());
+  Serial.printf("[Diagnostic] Remote Host: %s:%d%s\n", BACKEND_HOST, BACKEND_PORT, UPLOAD_ENDPOINT);
+  Serial.printf("[Diagnostic] Local Stream: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
+  
+  // Try to resolve hostname
+  IPAddress serverIP = WiFi.hostByName(BACKEND_HOST);
+  if (serverIP == (uint32_t)0) {
+    Serial.printf("[Diagnostic] DNS Resolution FAILED for %s\n", BACKEND_HOST);
+  } else {
+    Serial.printf("[Diagnostic] DNS Resolved %s -> %s\n", BACKEND_HOST, serverIP.toString().c_str());
+  }
+  
+  Serial.printf("[Diagnostic] Upload State: active=%d, failures=%d, total=%lu\n", 
+                is_camera_active, frame_upload_state.consecutive_failures, frame_upload_state.total_uploads);
+  Serial.printf("[Diagnostic] Stream Viewers: %d\n", active_viewers);
+  Serial.println("[Diagnostic] =========================================");
+}
+
 // HTTP Upload Task
 void poll_frame_upload() {
-  // 检查前置条件
-  if (!is_camera_active) return;  // 相机未初始化
-  if (WiFi.status() != WL_CONNECTED) return;  // WiFi未连接
+  // Check preconditions
+  if (!is_camera_active) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  // Skip upload if stream clients are active - avoid frame buffer contention
+  if (active_viewers > 0) {
+    return;
+  }
   
   unsigned long now = millis();
   if (now - frame_upload_state.last_upload_time < UPLOAD_INTERVAL_MS || frame_upload_state.is_uploading) return;
+
+  // Run periodic diagnostic
+  diagnose_network_connectivity();
 
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
@@ -247,29 +364,42 @@ void poll_frame_upload() {
   String url = "http://" + String(BACKEND_HOST) + ":" + String(BACKEND_PORT) + UPLOAD_ENDPOINT;
 
   HTTPClient http;
-  http.begin(url);
+  http.setConnectTimeout(3000);
+  http.setTimeout(5000);
+  
+  Serial.printf("[Upload] Connecting to %s:%d...\n", BACKEND_HOST, BACKEND_PORT);
+  if (!http.begin(url)) {
+    Serial.println("[Upload] ERROR: Failed to initialize HTTP connection");
+    esp_camera_fb_return(fb);
+    frame_upload_state.is_uploading = false;
+    frame_upload_state.consecutive_failures++;
+    return;
+  }
+  
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-MAC", WiFi.macAddress());  // 格式：AA:BB:CC:DD:EE:FF
+  http.addHeader("X-Device-MAC", WiFi.macAddress());
   http.addHeader("X-Device-Secret", DEVICE_SECRET);
-  http.setTimeout(5000);  // 设置5秒超时
 
-  Serial.printf("[Upload] Uploading %d bytes to %s\n", fb->len, url.c_str());
+  Serial.printf("[Upload] POST %d bytes to %s\n", fb->len, url.c_str());
   int http_code = http.POST(fb->buf, fb->len);
+  
   if (http_code == 200) {
-    frame_upload_state.consecutive_failures = 0;  // 重置失败计数
+    frame_upload_state.consecutive_failures = 0;
     frame_upload_state.total_uploads++;
     frame_upload_state.total_bytes += fb->len;
-    Serial.printf("[Upload] OK: Snapshot uploaded (%d bytes, total: %lu, avg: %.1f KB)\n", 
-                  fb->len, frame_upload_state.total_uploads, 
-                  (float)frame_upload_state.total_bytes / frame_upload_state.total_uploads / 1024);
+    Serial.printf("[Upload] SUCCESS: HTTP 200, %d bytes (total: %lu)\n", 
+                  fb->len, frame_upload_state.total_uploads);
   } else if (http_code > 0) {
     frame_upload_state.consecutive_failures++;
-    Serial.printf("[Upload] FAIL: HTTP %d, body: %s, failures: %d\n", 
-                  http_code, http.getString().c_str(), frame_upload_state.consecutive_failures);
+    String response = http.getString();
+    if (response.length() > 100) response = response.substring(0, 100);
+    Serial.printf("[Upload] HTTP_ERROR: code=%d, response=%s, failures=%d\n", 
+                  http_code, response.c_str(), frame_upload_state.consecutive_failures);
   } else {
     frame_upload_state.consecutive_failures++;
-    Serial.printf("[Upload] ERROR: Connection failed (code: %d), failures: %d\n", 
+    Serial.printf("[Upload] CONNECTION_ERROR: code=%d (likely network issue), failures=%d\n", 
                   http_code, frame_upload_state.consecutive_failures);
+    Serial.printf("[Upload] Error string: %s\n", http.errorToString(http_code).c_str());
   }
 
   esp_camera_fb_return(fb);
@@ -322,7 +452,10 @@ void setup() {
 
   xTaskCreateUniversal(mqtt_task, "mqtt", 8192, NULL, 1, NULL, 0);
   
-  // 初始化相机用于快照上传
+  // Start HTTP server for local /stream endpoint
+  start_httpd();
+  
+  // Initialize camera for snapshot upload
   Serial.println("Initializing camera...");
   esp_err_t camera_init_result = manage_camera_power(true);
   if (camera_init_result == ESP_OK) {
