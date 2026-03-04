@@ -17,6 +17,30 @@ import os
 MAC_PATTERN = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
 
 
+def _generate_placeholder_jpeg():
+    """
+    生成最小的有效 JPEG 占位符（1x1 灰色像素）
+    这避免了 PIL 依赖，作为降级方案
+    
+    :return: JPEG 二进制数据（约 600 字节）
+    """
+    # 这是一个最小的有效灰色 1x1 像素 JPEG
+    # FFD8 = JPEG SOI marker
+    # FFE0 = JFIF APP0 marker
+    # FFDB = Quantization Table Marker
+    # FFC0 = Start of Frame marker  
+    # FFDA = Start of Scan marker
+    # FFD9 = EOI marker
+    placeholder = (
+        b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00'
+        b'\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff'
+        b'\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00'
+        b'\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b'
+        b'\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd7\xff\xd9'
+    )
+    return placeholder
+
+
 # V3.0 极简 RESTful 路由架构
 # 设计原则：
 # 1) 收敛路由：同一资源使用 HTTP Method + action 区分操作，避免接口爆炸
@@ -1436,38 +1460,31 @@ def proxy_device_stream(mac_address):
 @token_required
 def proxy_device_snapshot(mac_address):
     """
-    实时快照获取接口 - HTTP 推送模型
+    实时快照获取接口
     
-    新方案（当前）：
-    - ESP32 主动推送最新快照到 POST /api/device/upload_snapshot
-    - 后端将快照存储在全局字典 device_frames[mac]
-    - 前端通过 GET 从字典中取数据，避免频繁请求 ESP32
-    - 优势：降低延迟、减少 ESP32 压力、支持在线/离线状态管理
-    
-    旧方案（已废弃）：
-    - 直接从 ESP32 代理，GET snapshot_url
-    - 问题：ESP32 因网络拥塞返回 503，前端频繁请求导致雪崩
+    架构：
+    - 优先从内存缓存 device_frames 获取（由 POST /api/device/upload_snapshot 推送）
+    - 缓存miss时，回退到直接从 ESP32 代理
+    - ESP32 超时或离线时，返回占位符 JPEG 而非 503
     
     请求示例：
-    GET /api/device/snapshot/2605AF97BE47?t=1234567890  (无冒号格式)
+    GET /api/device/snapshot/ACA704260CFC
     """
     from app import device_frames
     from time import time
     
     current_user = g.current_user
     
-    # 将 MAC 地址转换为标准格式（带冒号）与数据库匹配
-    # 输入: 2605AF97BE47 或 26:05:AF:97:BE:47
+    # 将 MAC 地址转换为标准格式（带冒号）
     mac_clean = mac_address.replace(':', '').upper()
     if len(mac_clean) != 12:
         return response_helper.bad_request('MAC 地址格式错误', 'INVALID_MAC_FORMAT')
     
-    # 转换为标准格式：26:05:AF:97:BE:47
     mac_standard = ':'.join([mac_clean[i:i+2] for i in range(0, 12, 2)])
     
     # 1. 验证权限
     error_resp = permission_helper.check_device_access(current_user, mac_standard)
-    if error_resp[0]:  # error_resp返回(error_dict, status_code)或(None, None)
+    if error_resp[0]:
         return response_helper.error(error_resp[0]['message'], error_resp[0]['error_code'], error_resp[1])
     
     # 2. 查询设备
@@ -1481,53 +1498,70 @@ def proxy_device_snapshot(mac_address):
         current_time = time()
         frame_age = current_time - frame_data.get('timestamp', 0)
         
-        # 如果快照在5分钟以内，直接返回（认为设备在线）
+        # 如果快照在5分钟以内，直接返回
         if frame_age < 300:  # 300 秒 = 5 分钟
+            print(f'[Snapshot] Cache HIT for {mac_standard} (age: {frame_age:.1f}s)')
             return Response(
                 frame_data['data'],
                 content_type='image/jpeg',
                 headers={
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0',
-                    'X-Frame-Age': str(int(frame_age))  # 返回快照的时龄供调试
+                    'Cache-Control': 'no-cache',
+                    'X-Frame-Source': 'cache',
+                    'X-Frame-Age': str(int(frame_age))
                 }
             )
         else:
             # 快照过期，从字典中移除
             del device_frames[mac_standard]
-            print(f'[Snapshot] WARN: Expired for device {mac_standard} (age: {frame_age}s)')
     
-    # 4. 如果内存字典中没有快照，回退到直接从 ESP32 获取（兼容旧方案）
-    print(f'[Snapshot] INFO: Cache miss for {mac_standard}, falling back to ESP32 proxy')
+    # 4. 缓存miss - 回退到直接从 ESP32 代理
+    print(f'[Snapshot] Cache MISS for {mac_standard}, falling back to ESP32')
     
     if device.status != 'online':
-        return response_helper.error('设备离线，无缓存快照', 'DEVICE_OFFLINE', 503)
+        print(f'[Snapshot] Device offline, returning placeholder for {mac_standard}')
+        placeholder = _generate_placeholder_jpeg()
+        return Response(
+            placeholder,
+            content_type='image/jpeg',
+            headers={'X-Frame-Source': 'placeholder-offline'}
+        )
     
-    snapshot_url = current_app.config.get('DEVICE_SNAPSHOT_URL_TEMPLATE', 'http://192.168.3.161:81/stream?action=snapshot')
+    snapshot_url = current_app.config.get(
+        'DEVICE_SNAPSHOT_URL_TEMPLATE', 
+        'http://192.168.3.161:81/stream?action=snapshot'
+    )
     
     try:
-        # 5. 请求 ESP32 快照（超时改为 2 秒，快速失败）
+        # 5. 代理 ESP32 快照（2秒超时）
+        print(f'[Snapshot] Requesting ESP32 from {snapshot_url}')
         response = requests.get(snapshot_url, timeout=2)
         response.raise_for_status()
         
-        # 6. 直接转发 JPEG 数据（不保存）
+        print(f'[Snapshot] Got ESP32 snapshot ({len(response.content)} bytes)')
         return Response(
             response.content,
             content_type='image/jpeg',
-            headers={
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            }
+            headers={'X-Frame-Source': 'esp32-proxy'}
         )
         
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout):
-        # ESP32 无响应，记录日志但不返回错误 - 前端使用占位图
-        print(f'[Snapshot] WARN: ESP32 timeout for {mac_standard}, returning placeholder')
-        current_app.logger.warning(f'Snapshot proxy timeout for {mac_standard}')
-        return response_helper.error('设备无响应，请检查连接', 'DEVICE_TIMEOUT', 503)
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout) as e:
+        print(f'[Snapshot] TIMEOUT for {mac_standard}: {e}')
+        # 返回占位符而非 503
+        placeholder = _generate_placeholder_jpeg()
+        return Response(
+            placeholder,
+            content_type='image/jpeg',
+            headers={'X-Frame-Source': 'placeholder-timeout'}
+        )
     except requests.exceptions.RequestException as e:
+        print(f'[Snapshot] ERROR for {mac_standard}: {e}')
+        # 返回占位符而非 503
+        placeholder = _generate_placeholder_jpeg()
+        return Response(
+            placeholder,
+            content_type='image/jpeg',
+            headers={'X-Frame-Source': 'placeholder-error'}
+        )
         print(f'[Snapshot] ERROR: ESP32 proxy error for {mac_standard}: {e}')
         current_app.logger.error(f'Snapshot proxy error: {e}')
         return response_helper.error('获取快照失败', 'SNAPSHOT_FAILED', 503)
