@@ -11,6 +11,9 @@ from core.models import Log, Device
 # 全局 Flask-MQTT 实例
 mqtt = Mqtt()
 
+# 保存 Flask app 实例，供后台 MQTT 回调使用（因为回调通常在独立线程）
+flask_app = None
+
 
 def init_mqtt(app):
     """初始化 Flask-MQTT 扩展"""
@@ -25,7 +28,10 @@ def init_mqtt(app):
     
     # 初始化 MQTT 扩展
     mqtt.init_app(app)
-    
+    # 保存应用实例，供回调使用
+    global flask_app
+    flask_app = app
+
     print(f"Flask-MQTT initialized with broker {app.config['MQTT_BROKER_URL']}:{app.config['MQTT_BROKER_PORT']}")
 
 
@@ -59,23 +65,16 @@ def handle_disconnect():
 
 
 @mqtt.on_message()
-def handle_message(client, userdata, message):
-    """
-    处理收到的 MQTT 消息
-    
-    支持的topic格式：
-    1. /iot/device/{mac}/up  (ESP32新格式，mac无冒号，如 AABBCCDDEEFF)
-    2. /iot/device/{mac}/status  (设备状态/遗嘱，关键离线通知)
-    3. access/control/event/{mac}  (旧格式，mac带冒号)
-    """
+def _handle_message_impl(client, userdata, message):
+    """内部实现：假定已在 Flask 应用上下文中运行"""
     try:
         topic = message.topic
         payload = json.loads(message.payload.decode('utf-8'))
         print(f"Received MQTT message on {topic}: {payload}")
-        
+
         # 解析MAC地址
         mac_address = None
-        
+
         # 格式1: /iot/device/{mac}/up
         if topic.startswith('/iot/device/'):
             parts = topic.split('/')
@@ -83,20 +82,20 @@ def handle_message(client, userdata, message):
                 mac_no_colon = parts[3]  # 获取无冒号的MAC，如 AABBCCDDEEFF
                 # 转换为标准格式：AA:BB:CC:DD:EE:FF
                 mac_address = ':'.join([mac_no_colon[i:i+2] for i in range(0, 12, 2)]).upper()
-        
+
         # 格式3: access/control/event/{mac}
         elif topic.startswith('access/control/event/'):
             parts = topic.split('/')
             if len(parts) >= 4:
                 mac_address = parts[-1].upper()
-        
+
         if not mac_address:
             print(f"Invalid topic format: {topic}")
             return
-        
+
         print(f"Extracted MAC address: {mac_address}")
-        
-        # 处理设备状态消息 (掉电/离线)        # /iot/device/{mac}/status 通常用于遗嘱或设备主动上报离线状态
+
+        # 处理设备状态消息 (掉电/离线)
         if '/status' in topic:
             device_status = payload.get('status', 'unknown')
             if device_status == 'offline':
@@ -105,28 +104,27 @@ def handle_message(client, userdata, message):
                     device.status = 'offline'
                     device.last_heartbeat = datetime.utcnow()
                     db.session.commit()
-                    print(f"[MQTT] OK: Device {mac_address} marked as offline (LWT or status message)")
+                    print(f"[MQTT] OK: Device {mac_address} marked as offline from LWT or status message")
             return
-        
+
         # 获取或查询设备（更新在线状态时需要）
         device = Device.query.filter_by(mac_address=mac_address).first()
         if not device:
             print(f"Device not found: {mac_address}, skipping status update")
         else:
             # 更新设备在线状态
-            # 任何来自设备的消息都表示设备在线
             device.status = 'online'
             device.last_heartbeat = datetime.utcnow()
-        
+
         # 处理不同类型的消息
         msg_type = payload.get('type', 'unknown')
-        
+
         # 心跳包：更新设备状态
         if msg_type == 'heartbeat':
             if device:
                 db.session.commit()
                 print(f"Updated heartbeat for device: {mac_address}")
-        
+
         # 硬件上报（STM32串口数据）
         elif msg_type == 'hw_report':
             cmd = payload.get('cmd')
@@ -134,13 +132,12 @@ def handle_message(client, userdata, message):
             print(f"Hardware report from {mac_address}: cmd={cmd}, data={data}")
             if device:
                 db.session.commit()
-            # TODO: 根据业务需求处理硬件上报
-        
+
         # 通行事件
         elif msg_type == 'pass':
             event_id = payload.get('event_id', f"evt_{int(time.time())}")
             unlock_method = payload.get('method', 'fingerprint')
-            
+
             # 检查日志是否已存在
             existing_log = Log.query.filter_by(event_id=event_id).first()
             if not existing_log:
@@ -153,21 +150,34 @@ def handle_message(client, userdata, message):
                 db.session.commit()
                 print(f"New access event logged: {event_id}")
             else:
-                # 更新已有记录
                 existing_log.unlock_method = unlock_method
                 db.session.commit()
                 print(f"Updated existing log: {event_id}")
-        
-        # 对于其他消息类型，仍需提交设备状态更新
+
         else:
             if device:
                 db.session.commit()
             print(f"Message type '{msg_type}' processed for device: {mac_address}")
-        
+
     except Exception as e:
         print(f"Error processing MQTT message: {str(e)}")
         import traceback
         traceback.print_exc()
+
+
+@mqtt.on_message()
+def handle_message(client, userdata, message):
+    """外部回调：在没有 Flask 上下文时推入应用上下文再调用实现。"""
+    if flask_app:
+        with flask_app.app_context():
+            _handle_message_impl(client, userdata, message)
+    else:
+        try:
+            # 尝试使用 current_app
+            with current_app.app_context():
+                _handle_message_impl(client, userdata, message)
+        except Exception:
+            print("[MQTT] ERROR: no Flask app context available for handling message")
 
 
 def publish_command(mac_address, command):

@@ -7,10 +7,11 @@ import os
 class Config:
     """基础配置"""
     
-    # 数据库配置    SQLALCHEMY_DATABASE_URI = os.getenv(
-        'DATABASE_URL',
-        'sqlite:///instance/access_control.db'
-    )
+    # 数据库配置    
+    # SQLALCHEMY_DATABASE_URI = os.getenv(
+        # 'DATABASE_URL',
+        # 'sqlite:///instance/access_control.db'
+    # )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # JWT 配置    SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
