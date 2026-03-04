@@ -45,18 +45,18 @@ def test_normalize_mac():
         if expected_error:
             # 期望有错误
             if error and expected_error in error:
-                print(f"✅ PASS: '{input_mac}' -> 错误: {error}")
+                print(f"PASS: '{input_mac}' -> 错误: {error}")
                 passed += 1
             else:
-                print(f"❌ FAIL: '{input_mac}' -> 期望错误: {expected_error}, 实际: {error}")
+                print(f"FAIL: '{input_mac}' -> 期望错误: {expected_error}, 实际: {error}")
                 failed += 1
         else:
             # 期望成功
             if result == expected_output and error is None:
-                print(f"✅ PASS: '{input_mac}' -> '{result}'")
+                print(f"PASS: '{input_mac}' -> '{result}'")
                 passed += 1
             else:
-                print(f"❌ FAIL: '{input_mac}' -> 期望: '{expected_output}', 实际: '{result}', 错误: {error}")
+                print(f"FAIL: '{input_mac}' -> 期望: '{expected_output}', 实际: '{result}', 错误: {error}")
                 failed += 1
     
     print(f"\n总结: {passed} 通过, {failed} 失败")
@@ -79,21 +79,21 @@ def test_base64_encoding():
     has_newline = '\r' in base64_str or '\n' in base64_str
     
     print(f"Base64 字符串长度: {len(base64_str)}")
-    print(f"包含换行符: {'❌ 是' if has_newline else '✅ 否'}")
+    print(f"包含换行符: {'是' if has_newline else '否'}")
     print(f"前 50 个字符: {base64_str[:50]}")
     print(f"后 50 个字符: {base64_str[-50:]}")
     
     if has_newline:
-        print("\n⚠️ 警告: Base64 字符串包含换行符，可能导致微信小程序渲染失败！")
+        print("\n警告: Base64 字符串包含换行符，可能导致微信小程序渲染失败！")
         return False
     else:
-        print("\n✅ Base64 编码正确，无换行符")
+        print("\nBase64 编码正确，无换行符")
         return True
 
 
 def main():
     """主测试函数"""
-    print("\n🔧 智慧校园门禁系统 - 快照渲染修复验证\n")
+    print("\n智慧校园门禁系统 - 快照渲染修复验证\n")
     
     test1_passed = test_normalize_mac()
     test2_passed = test_base64_encoding()
@@ -103,10 +103,10 @@ def main():
     print("=" * 60)
     
     if test1_passed and test2_passed:
-        print("✅ 所有测试通过！修复验证成功。")
+        print("所有测试通过！修复验证成功。")
         return 0
     else:
-        print("❌ 部分测试失败，请检查代码。")
+        print("部分测试失败，请检查代码。")
         return 1
 
 

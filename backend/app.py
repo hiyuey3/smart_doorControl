@@ -54,7 +54,7 @@ def create_app():
         static_url_path='/static'
     )
 
-    # 🔧 反向代理支持 - 修复 redirect 重定向到 127.0.0.1 的问题
+    # 反向代理支持 - 修复 redirect 重定向到 127.0.0.1 的问题
     # x_for=1: 信任 1 层代理的 X-Forwarded-For
     # x_proto=1: 信任 X-Forwarded-Proto（识别 HTTPS）
     # x_host=1: 信任 X-Forwarded-Host（识别真实域名）

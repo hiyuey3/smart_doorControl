@@ -21,10 +21,11 @@ const int mqtt_port = 1883;
 
 #define DEVICE_SECRET "device_secret_key_v1"
 #define UPLOAD_INTERVAL_MS 1000  // 1秒上传一次
-// 已经测试没有占用好的接口
-#define LED_BUILT_IN 2// 已经测试没有占用好的接口，不要动
-#define STM_RX_PIN 21   // 已经测试没有占用好的接口不要动
-#define STM_TX_PIN 4  
+
+// 已经测试没有占用好的接口，不要动
+#define LED_BUILT_IN 2  
+#define STM_RX_PIN 21   
+#define STM_TX_PIN 42
 HardwareSerial SerialSTM(1);
 
 // Globals
@@ -121,7 +122,7 @@ esp_err_t manage_camera_power(bool enable, bool forced = false) {
     config.grab_mode = CAMERA_GRAB_LATEST;
     config.fb_location = CAMERA_FB_IN_PSRAM;
     config.jpeg_quality = 12;
-    config.fb_count = 2;
+    config.fb_count = 2; // 必须保持 2 开启双缓冲
 
     esp_err_t err = esp_camera_init(&config);
     if (err == ESP_OK) {
@@ -158,7 +159,6 @@ void business_command_router(String json_msg) {
     led_state = !led_state;
     digitalWrite(LED_BUILT_IN, led_state ? HIGH : LOW);
     Serial.printf("Test Case: LED %s\n", led_state ? "ON" : "OFF");
-    
   }
 }
 
@@ -255,6 +255,10 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     // MJPEG stream response
     httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
     
+    // 👇 极其关键的修改：有客户端连接本地流时，增加观众计数
+    active_viewers++;
+    Serial.printf("[Stream] Client connected, active_viewers: %d\n", active_viewers);
+    
     while (WiFi.isConnected()) {
       camera_fb_t *frame = esp_camera_fb_get();
       if (!frame) {
@@ -276,6 +280,10 @@ static esp_err_t stream_handler(httpd_req_t *req) {
       esp_camera_fb_return(frame);
       delay(10);  // Small delay between frames
     }
+    
+    // 👇 极其关键的修改：客户端断开时，减少观众计数
+    active_viewers--;
+    Serial.printf("[Stream] Client disconnected, active_viewers: %d\n", active_viewers);
   }
 
   esp_camera_fb_return(fb);
@@ -310,51 +318,13 @@ void start_httpd() {
   }
 }
 
-// Diagnostic function for network connectivity
-void diagnose_network_connectivity() {
-  static unsigned long last_diagnose = 0;
-  unsigned long now = millis();
-  
-  if (now - last_diagnose < 30000) return;  // Diagnose every 30 seconds
-  last_diagnose = now;
-  
-  Serial.println("[Diagnostic] ===== Network Connectivity Check =====");
-  Serial.printf("[Diagnostic] WiFi Status: %d (3=Connected)\n", WiFi.status());
-  Serial.printf("[Diagnostic] IP Address: %s\n", WiFi.localIP().toString().c_str());
-  Serial.printf("[Diagnostic] Signal Strength: %d dBm\n", WiFi.RSSI());
-  Serial.printf("[Diagnostic] Remote Host: %s:%d%s\n", BACKEND_HOST, BACKEND_PORT, UPLOAD_ENDPOINT);
-  Serial.printf("[Diagnostic] Local Stream: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
-  
-  // Try to resolve hostname
-  IPAddress serverIP;
-  int dns_result = WiFi.hostByName(BACKEND_HOST, serverIP);
-  if (dns_result == 0) {
-    Serial.printf("[Diagnostic] DNS Resolution FAILED for %s\n", BACKEND_HOST);
-  } else {
-    Serial.printf("[Diagnostic] DNS Resolved %s -> %s\n", BACKEND_HOST, serverIP.toString().c_str());
-  }
-  
-  Serial.printf("[Diagnostic] Upload State: active=%d, failures=%d, total=%lu\n", 
-                is_camera_active, frame_upload_state.consecutive_failures, frame_upload_state.total_uploads);
-  Serial.printf("[Diagnostic] Stream Viewers: %d\n", active_viewers);
-  Serial.println("[Diagnostic] =========================================");
-}
-
 // HTTP Upload Task
-// 功能：定期向云端后端推送最新的摄像头快照
-// 逻辑：
-//   1. 检查前置条件（网络连接、相机状态）
-//   2. 如果有本地流客户端，暂停上传（避免帧缓冲冲突）
-//   3. 从摄像头获取JPEG帧数据
-//   4. POST到后端 /api/device/upload_snapshot 接口
-//   5. 跟踪上传成功/失败统计
 void poll_frame_upload() {
   // 前置条件检查
   if (!is_camera_active) return;        // 相机未初始化
   if (WiFi.status() != WL_CONNECTED) return;  // WiFi未连接
   
   // 避免帧缓冲冲突：当有本地/stream客户端时，暂停云端上传
-  // 原因：单个OV2640摄像头共享帧缓冲资源，两个任务不能同时调用esp_camera_fb_get()
   if (active_viewers > 0) {
     return;
   }
@@ -362,9 +332,6 @@ void poll_frame_upload() {
   unsigned long now = millis();
   // 限制上传频率：避免过于频繁的请求
   if (now - frame_upload_state.last_upload_time < UPLOAD_INTERVAL_MS || frame_upload_state.is_uploading) return;
-
-  // 定期打印网络诊断信息（每30秒）
-  diagnose_network_connectivity();
 
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
@@ -379,7 +346,6 @@ void poll_frame_upload() {
   http.setConnectTimeout(3000);  // 连接超时3秒
   http.setTimeout(5000);         // 总超时5秒
   
-  Serial.printf("[Upload] Connecting to %s:%d...\n", BACKEND_HOST, BACKEND_PORT);
   if (!http.begin(url)) {
     Serial.println("[Upload] ERROR: Failed to initialize HTTP connection");
     esp_camera_fb_return(fb);
@@ -393,7 +359,6 @@ void poll_frame_upload() {
   http.addHeader("X-Device-MAC", WiFi.macAddress());  // 设备MAC地址标识
   http.addHeader("X-Device-Secret", DEVICE_SECRET);   // 防止未授权上传
 
-  Serial.printf("[Upload] POST %d bytes to %s\n", fb->len, url.c_str());
   int http_code = http.POST(fb->buf, fb->len);
   
   if (http_code == 200) {
@@ -406,16 +371,13 @@ void poll_frame_upload() {
   } else if (http_code > 0) {
     // HTTP错误响应（4xx/5xx）
     frame_upload_state.consecutive_failures++;
-    String response = http.getString();
-    if (response.length() > 100) response = response.substring(0, 100);
-    Serial.printf("[Upload] HTTP_ERROR: code=%d, response=%s, failures=%d\n", 
-                  http_code, response.c_str(), frame_upload_state.consecutive_failures);
+    Serial.printf("[Upload] HTTP_ERROR: code=%d, failures=%d\n", 
+                  http_code, frame_upload_state.consecutive_failures);
   } else {
     // 网络连接错误或超时
     frame_upload_state.consecutive_failures++;
     Serial.printf("[Upload] CONNECTION_ERROR: code=%d (likely network issue), failures=%d\n", 
                   http_code, frame_upload_state.consecutive_failures);
-    Serial.printf("[Upload] Error string: %s\n", http.errorToString(http_code).c_str());
   }
 
   // 释放摄像头帧缓冲（RAII模式）
@@ -433,6 +395,16 @@ void setup() {
   pinMode(LED_BUILT_IN, OUTPUT);
   digitalWrite(LED_BUILT_IN, LOW);
 
+  // 1. 初始化相机 (确保连续大内存)
+  Serial.println("\nInitializing camera...");
+  esp_err_t camera_init_result = manage_camera_power(true);
+  if (camera_init_result == ESP_OK) {
+    Serial.println("[Camera] Initialized successfully, snapshot upload enabled");
+  } else {
+    Serial.printf("[Camera] FAILED to initialize (error: 0x%x), snapshot upload disabled\n", camera_init_result);
+  }
+
+  // 2. 初始化网络
   framework_network_init();
 
   String raw_mac = WiFi.macAddress();
@@ -471,15 +443,6 @@ void setup() {
   
   // Start HTTP server for local /stream endpoint
   start_httpd();
-  
-  // Initialize camera for snapshot upload
-  Serial.println("Initializing camera...");
-  esp_err_t camera_init_result = manage_camera_power(true);
-  if (camera_init_result == ESP_OK) {
-    Serial.println("[Camera] Initialized successfully, snapshot upload enabled");
-  } else {
-    Serial.printf("[Camera] FAILED to initialize (error: 0x%x), snapshot upload disabled\n", camera_init_result);
-  }
   
   Serial.println("System Running.");
 }

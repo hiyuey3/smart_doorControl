@@ -1527,7 +1527,7 @@ def proxy_device_snapshot(mac_address):
     2. 内存缓存 device_frames（次优，由ESP32主动推送）
     3. 本地ESP32直连（备选，用于开发测试）
     
-    ⚠️ V3.1 重要变更：统一返回 JSON 格式的 Base64 编码数据
+    V3.1 重要变更：统一返回 JSON 格式的 Base64 编码数据
     - 解决微信小程序 Base64 渲染黑屏问题
     - 后端强制去除换行符，前端额外清理（双重保险）
     
@@ -1550,7 +1550,7 @@ def proxy_device_snapshot(mac_address):
     
     current_user = g.current_user
     
-    # ✅ 使用统一的 MAC 地址标准化函数（避免 Cache MISS）
+    # 使用统一的 MAC 地址标准化函数（避免 Cache MISS）
     mac_standard, error = normalize_mac(mac_address)
     if error:
         return response_helper.bad_request(f'MAC 地址格式错误: {error}', 'INVALID_MAC_FORMAT')
@@ -1576,7 +1576,7 @@ def proxy_device_snapshot(mac_address):
             response.raise_for_status()
             print(f'[Snapshot] Got cloud relay snapshot ({len(response.content)} bytes)')
             
-            # ✅ 转换为 Base64（无换行符）
+            # 转换为 Base64（无换行符）
             base64_data = base64.b64encode(response.content).decode('utf-8')
             return response_helper.success(
                 data={
@@ -1599,7 +1599,7 @@ def proxy_device_snapshot(mac_address):
         if frame_age < 300:  # 300 秒 = 5 分钟
             print(f'[Snapshot] Cache HIT for {mac_standard} (age: {frame_age:.1f}s)')
             
-            # ✅ 转换为 Base64（无换行符）
+            # 转换为 Base64（无换行符）
             base64_data = base64.b64encode(frame_data['data']).decode('utf-8')
             return response_helper.success(
                 data={
@@ -1643,7 +1643,7 @@ def proxy_device_snapshot(mac_address):
         
         print(f'[Snapshot] Got local ESP32 snapshot from {device_ip} ({len(response.content)} bytes)')
         
-        # ✅ 转换为 Base64（无换行符）
+        # 转换为 Base64（无换行符）
         base64_data = base64.b64encode(response.content).decode('utf-8')
         return response_helper.success(
             data={

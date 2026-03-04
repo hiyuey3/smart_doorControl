@@ -159,7 +159,7 @@ Page({
         console.log(' 后端登录响应 ', res);
 
         if (res.statusCode === 200 && res.data && res.data.success) {
-          // ✅ 登录成功
+          // 登录成功
           // 关键：先清除旧数据，再保存新数据，防止账号切换时数据混乱
           wx.removeStorageSync('token');
           wx.removeStorageSync('userInfo');
@@ -167,13 +167,13 @@ Page({
           // 关键修复：安全访问响应数据 res.data.data
           // 原因：防止响应格式异常导致 undefined 错误
           // 示例场景：
-          //   修复前：const token = res.data.data.token  ❌ (若data不存在则报错)
-          //   修复后：const responseData = res.data.data || {}  ✅ (安全)
+          //   修复前：const token = res.data.data.token  (若data不存在则报错)
+          //   修复后：const responseData = res.data.data || {}  (安全)
           const responseData = res.data.data || {};
           const token = responseData.token;
           const userInfo = responseData.user || {};
           
-          // ✅ 额外的数据有效性检查：确保token不为空
+          // 额外的数据有效性检查：确保token不为空
           // 防线说明：
           // 1. 后端返回success=true，但token为空（异常情况）
           // 2. 如果不检查直接保存空token，后续API调用会失败
@@ -196,7 +196,7 @@ Page({
           wx.setStorageSync('token', token);
           wx.setStorageSync('userInfo', userInfo);
 
-          console.log(' 登录成功，数据已更新 ');
+          console.log('登录成功，数据已更新');
           console.log('Token:', token.substring(0, 50) + '...');  // 仅打印前50个字符（保护敏感信息）
           console.log('用户信息:', userInfo);
 
@@ -212,14 +212,14 @@ Page({
 
           // 延迟后跳转到控制台，给用户查看成功提示的时间
           setTimeout(function() {
-            console.log(' 执行跳转 ');
+            console.log('执行跳转');
             wx.switchTab({
               url: '/pages/console/index'
             });
           }, 1500);
 
         } else {
-          // ❌ 后端返回失败（如：账号或密码错误）
+          // 后端返回失败（如：账号或密码错误）
           wx.hideLoading();
           console.error('后端返回失败:', res);
           wx.showToast({
@@ -279,10 +279,10 @@ Page({
         'Content-Type': 'application/json'
       },
       success: function(res) {
-        console.log(' 后端登录响应 ', res);
+        console.log('后端登录响应', res);
 
         if (res.statusCode === 200 && res.data && res.data.success) {
-          // ✅ 微信登录成功
+          // 微信登录成功
           // 关键：先清除旧数据，再保存新数据，防止账号切换时数据混乱
           wx.removeStorageSync('token');
           wx.removeStorageSync('userInfo');
@@ -293,7 +293,7 @@ Page({
           const token = responseData.token;
           const userInfo = responseData.user || {};
           
-          // ✅ 验证token有效性
+          // 验证token有效性
           // 重要：token是后续所有API调用的凭证，不能为空
           if (!token) {
             console.error('后端返回的 token 为空');
