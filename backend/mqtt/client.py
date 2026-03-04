@@ -129,7 +129,13 @@ def _handle_message_impl(client, userdata, message):
         if msg_type == 'heartbeat':
             if device:
                 db.session.commit()
-                print(f"Updated heartbeat for device: {mac_address}")
+                # 读取设备时间戳（如果有）
+                device_timestamp = payload.get('timestamp', 'N/A')
+                server_timestamp = datetime.utcnow().isoformat()
+                print(f"[MQTT] Heartbeat from {mac_address} | "
+                      f"Device time: {device_timestamp} | "
+                      f"Server time: {server_timestamp} | "
+                      f"Last heartbeat: {device.last_heartbeat}")
 
         # 硬件上报（STM32串口数据）
         elif msg_type == 'hw_report':
