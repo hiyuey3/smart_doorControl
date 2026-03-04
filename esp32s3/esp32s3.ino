@@ -338,20 +338,29 @@ void diagnose_network_connectivity() {
 }
 
 // HTTP Upload Task
+// 功能：定期向云端后端推送最新的摄像头快照
+// 逻辑：
+//   1. 检查前置条件（网络连接、相机状态）
+//   2. 如果有本地流客户端，暂停上传（避免帧缓冲冲突）
+//   3. 从摄像头获取JPEG帧数据
+//   4. POST到后端 /api/device/upload_snapshot 接口
+//   5. 跟踪上传成功/失败统计
 void poll_frame_upload() {
-  // Check preconditions
-  if (!is_camera_active) return;
-  if (WiFi.status() != WL_CONNECTED) return;
+  // 前置条件检查
+  if (!is_camera_active) return;        // 相机未初始化
+  if (WiFi.status() != WL_CONNECTED) return;  // WiFi未连接
   
-  // Skip upload if stream clients are active - avoid frame buffer contention
+  // 避免帧缓冲冲突：当有本地/stream客户端时，暂停云端上传
+  // 原因：单个OV2640摄像头共享帧缓冲资源，两个任务不能同时调用esp_camera_fb_get()
   if (active_viewers > 0) {
     return;
   }
   
   unsigned long now = millis();
+  // 限制上传频率：避免过于频繁的请求
   if (now - frame_upload_state.last_upload_time < UPLOAD_INTERVAL_MS || frame_upload_state.is_uploading) return;
 
-  // Run periodic diagnostic
+  // 定期打印网络诊断信息（每30秒）
   diagnose_network_connectivity();
 
   camera_fb_t* fb = esp_camera_fb_get();
@@ -364,8 +373,8 @@ void poll_frame_upload() {
   String url = "http://" + String(BACKEND_HOST) + ":" + String(BACKEND_PORT) + UPLOAD_ENDPOINT;
 
   HTTPClient http;
-  http.setConnectTimeout(3000);
-  http.setTimeout(5000);
+  http.setConnectTimeout(3000);  // 连接超时3秒
+  http.setTimeout(5000);         // 总超时5秒
   
   Serial.printf("[Upload] Connecting to %s:%d...\n", BACKEND_HOST, BACKEND_PORT);
   if (!http.begin(url)) {
@@ -376,32 +385,37 @@ void poll_frame_upload() {
     return;
   }
   
+  // 设置HTTP请求头
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-MAC", WiFi.macAddress());
-  http.addHeader("X-Device-Secret", DEVICE_SECRET);
+  http.addHeader("X-Device-MAC", WiFi.macAddress());  // 设备MAC地址标识
+  http.addHeader("X-Device-Secret", DEVICE_SECRET);   // 防止未授权上传
 
   Serial.printf("[Upload] POST %d bytes to %s\n", fb->len, url.c_str());
   int http_code = http.POST(fb->buf, fb->len);
   
   if (http_code == 200) {
+    // 上传成功
     frame_upload_state.consecutive_failures = 0;
     frame_upload_state.total_uploads++;
     frame_upload_state.total_bytes += fb->len;
     Serial.printf("[Upload] SUCCESS: HTTP 200, %d bytes (total: %lu)\n", 
                   fb->len, frame_upload_state.total_uploads);
   } else if (http_code > 0) {
+    // HTTP错误响应（4xx/5xx）
     frame_upload_state.consecutive_failures++;
     String response = http.getString();
     if (response.length() > 100) response = response.substring(0, 100);
     Serial.printf("[Upload] HTTP_ERROR: code=%d, response=%s, failures=%d\n", 
                   http_code, response.c_str(), frame_upload_state.consecutive_failures);
   } else {
+    // 网络连接错误或超时
     frame_upload_state.consecutive_failures++;
     Serial.printf("[Upload] CONNECTION_ERROR: code=%d (likely network issue), failures=%d\n", 
                   http_code, frame_upload_state.consecutive_failures);
     Serial.printf("[Upload] Error string: %s\n", http.errorToString(http_code).c_str());
   }
 
+  // 释放摄像头帧缓冲（RAII模式）
   esp_camera_fb_return(fb);
   http.end();
   frame_upload_state.is_uploading = false;
