@@ -887,3 +887,1063 @@ Base64 编码测试：无换行符
 - 云端中继、内存缓存、本地快照三层架构保持不变
 
 详细修复记录请查看 `.github/copilot-instructions.md` 的更新日志。
+
+---
+
+## 程序运作流程（系统架构详解）
+
+### 系统架构概图
+
+```
+微信小程序  
+├─ 登录模块 (pages/login)
+├─ 控制台模块 (pages/console)        ┐
+├─ 设备详情模块 (pages/device-detail) ├─ HTTP/WebSocket ─ Flask 后端
+├─ 日志查询模块 (pages/logs)          ├─ MQTT 发布订阅   (Python)
+├─ 用户管理模块 (pages/users)         │
+└─ 设置页面 (pages/settings)          ┘
+                                       │
+                                       ├─ MySQL 数据库
+                                       │  ├─ users 表
+                                       │  ├─ devices 表
+                                       │  ├─ logs 表
+                                       │  ├─ user_device_permissions 表
+                                       │  └─ device_applications 表
+                                       │
+                                       └─ MQTT Broker (mqtt.5i03.cn:1883)
+                                          │
+                                          └─ ESP32 硬件
+                                             ├─ WiFi 连接
+                                             ├─ 摄像头 (快照采集)
+                                             └─ 继电器模块 (门框控制)
+```
+
+### 核心业务流程
+
+#### 流程1：用户登录 (微信小程序)
+
+**流程步骤**：
+```
+1. 用户打开小程序
+   ↓
+2. app.js onLaunch() 检查本地 Token
+   ├─ 有 Token → 尝试用现有 Token 初始化
+   └─ 无 Token → 跳转登录页面
+   ↓
+3. 用户点击"微信登录" (pages/login/index.js)
+   ├─调用 wx.login() 获取 code（一次性授权码）
+   └─ POST /api/login?login_type=wechat 发送 code 到后端
+   ↓
+4. 后端处理 (backend/api/routes.py: login())
+   ├─ 调用微信服务器 code2session 接口
+   |  └─ 微信返回：session_key 和 openid
+   ├─ 检查数据库中是否存在 User 记录
+   │  ├─ 存在 → 直接生成 JWT Token
+   │  └─ 不存在 → 创建新 User 记录，设为待绑定状态
+   ├─ 生成 JWT Token (7天有效期)
+   └─ 返回 Token 和用户信息
+   ↓
+5. 小程序接收响应
+   ├─ 保存 Token 到本地存储 (wx.setStorageSync)
+   ├─ 保存用户信息 (name, role, avatar 等)
+   └─ 跳转到首页 (pages/console/index.js)
+   ↓
+6. 登录完成
+   └─ 小程序每次请求时自动在 Authorization Header 中附带 Token
+```
+
+**关键代码位置**：
+- 小程序登录：`miniprogram-1/pages/login/index.js:30-80`
+- 后端登录：`backend/api/routes.py:login_endpoint()`
+- 请求拦截：`miniprogram-1/utils/request.js:20-35`
+
+**异常处理**：
+- 401 Unauthorized：Token 过期或无效
+  - 小程序自动清除本地 Token
+  - 显示"登录已过期，请重新登录"
+  - 统一处理在 request.js 中
+
+---
+
+#### 流程2：获取设备列表 (设备组屏)
+
+**流程步骤**：
+```
+1. 用户进入控制台页面 (pages/console/index.js)
+   └─ onLoad() 或 onShow() 时自动加载
+   ↓
+2. 小程序发送请求
+   ├─ GET /api/user/devices
+   ├─ Header: Authorization: Bearer {token}
+   └─ 由 utils/request.js 自动处理 Token 附加
+   ↓
+3. 后端查询权限表 (backend/api/routes.py: get_user_devices())
+   ├─ 从 JWT Token 中解析用户 ID
+   ├─ 查询数据库：
+   |  SELECT devices.* FROM devices
+   |  JOIN user_device_permissions ON devices.mac_address = user_device_permissions.device_mac
+   |  WHERE user_device_permissions.user_id = {user_id}
+   |    AND user_device_permissions.status = 'approved'
+   ├─ 权限检查 (permission_helper)
+   │  └─ 确保用户只能访问自己具有权限的设备
+   └─ 返回设备列表 (JSON 格式)
+   ↓
+4. 小程序接收并渲染
+   ├─ 解析 JSON 数据
+   ├─ 循环渲染设备卡片 (wxml 模板)
+   ├─ 同步设备列表到 globalData
+   └─ 其他页面可引用
+   ↓
+5. 显示在首页
+   └─ 用户可看到所有已批准的设备列表
+      ├─ 设备名称
+      ├─ 设备地位置
+      ├─ 最后心跳时间 (显示在线/离线状态)
+      └─ 快照预览图 (后续流程)
+```
+
+**权限隔离原理**：
+- 数据库级权限检查：使用 `user_device_permissions` 表
+- 应用级权限检查：`permission_helper.check_device_access(user, mac)`
+- BOLA 防护：用户不能通过修改 MAU 地址参数访问无权限的设备
+
+**SQL 查询优化**：
+```sql
+-- 查询用户有权限的所有设备
+SELECT d.mac_address, d.name, d.location, d.status, d.last_heartbeat
+FROM devices d
+INNER JOIN user_device_permissions udp 
+  ON d.mac_address = udp.device_mac
+WHERE udp.user_id = ?
+  AND udp.status = 'approved'
+ORDER BY d.created_at DESC;
+```
+
+---
+
+#### 流程3：开启设备快照 (设备详情页)
+
+**流程步骤**：
+```
+1. 用户点击设备卡片
+   └─ 跳转到 pages/device-detail/index.js
+   ↓
+2. 小程序加载快照 (loadDeviceSnapshot())
+   ├─ 工作原理：三层快照获取策略
+   │
+   ├─ 优先级1：云端中继地址（CLOUD_RELAY_SNAPSHOT_URL）
+   │  ├─ 配置在后端环境变量中
+   │  ├─ 直接访问云端服务，不经过后端代理
+   │  ├─ 性能最优：< 100ms
+   │  └─ 失败时自动降级
+   │
+   ├─ 优先级2：后端代理 (GET /api/device/snapshot/{mac})
+   │  ├─ 小程序发送 Authorization Token
+   │  ├─ 后端查询缓存或本地 ESP32
+   │  ├─ 返回 Base64 编码的 JPEG 图像
+   │  └─ 超时 3 秒快速失败
+   │
+   └─ 优先级3：占位符 (灰色背景)
+      └─ 显示"离线或加载超时"提示
+   ↓
+3. 小程序接收快照
+   ├─ 解析 Base64 字符串
+   ├─ 核心修复：清理所有换行符 `.replace(/[\r\n]/g, "")`
+   ├─ 设置到 <image> 组件 src 属性
+   └─ 显示快照预览
+   ↓
+4. 快照更新循环
+   ├─ 每 3 秒自动刷新一次
+   ├─ 通过 setInterval() 实现
+   └─ 用户可手动下拉刷新 (onPullDownRefresh)
+```
+
+**后端快照获取机制**：
+```python
+# 代码位置：backend/api/routes.py: proxy_device_snapshot()
+
+def proxy_device_snapshot(mac):
+    # 步骤1：标准化 MAC 地址
+    mac_std = normalize_mac(mac)  # 统一格式
+    
+    # 步骤2：尝试从内存缓存获取
+    cache_key = f'snapshot_{mac_std}'
+    if cache_key in device_frames:
+        cached = device_frames[cache_key]
+        age = time.time() - cached['timestamp']
+        if age < 300:  # 5 分钟有效期
+            return cache_data  # Cache HIT
+    
+    # 步骤3：本地 ESP32 直连
+    if device.ip_address:
+        try:
+            url = f'http://{device.ip_address}:81/stream?action=snapshot'
+            response = requests.get(url, timeout=3)
+            if response.status_code == 200:
+                return response.content  # 成功
+        except requests.exceptions.Timeout:
+            pass  # 3 秒超时，继续降级
+    
+    # 步骤4：返回占位符
+    return create_placeholder_image()
+```
+
+**小程序端 Base64 处理**：
+```javascript
+// 代码位置：miniprogram-1/pages/device-detail/index.js
+
+function loadDeviceSnapshot() {
+  request({
+    url: '/device/snapshot/' + mac_address,
+    method: 'GET'
+  }).then(res => {
+    // 关键步骤：清理 Base64 中的所有换行符
+    let base64 = res.data.image_base64;
+    base64 = base64.replace(/[\r\n]/g, "");  // 移除 \r 和 \n
+    
+    // 设置到图像组件
+    this.setData({
+      snapshotSrc: `data:image/jpeg;base64,${base64}`,
+      snapshotLoaded: true
+    });
+  });
+}
+```
+
+**关键优化**：
+- MAC 地址统一格式：避免缓存 Miss
+- Base64 无换行符：微信小程序渲染正常
+- 三层降级策略：保证用户体验
+
+---
+
+#### 流程4：远程开锁 (点击开锁按钮)
+
+**流程步骤**：
+```
+1. 用户点击"开锁"按钮
+   └─ 调用 onUnlockDevice() 函数
+   ↓
+2. 小程序验证并发送请求
+   ├─ 检查登录状态 (utils/page-helper.js)
+   ├─ MAC 地址格式标准化 (移除冒号)
+   ├─ POST /api/devices/{mac}/unlock
+   ├─ 发送本次开锁的 metadata
+   │  ├─ unlock_method: 'remote_app'
+   │  ├─ device_mac: 标准化后的 MAC
+   │  └─ timestamp: 当前时间戳
+   └─ 由 utils/request.js 自动附加 Token
+   ↓
+3. 后端处理开锁请求 (backend/api/routes.py: unlock_device())
+   ├─ Token 验证：从 JWT 中解析用户 ID
+   ├─ 权限检查：
+   |  └─ permission_helper.check_device_access(user_id, mac)
+   |     └─ 查询 user_device_permissions，验证状态 = 'approved'
+   ├─ 设备状态检查：
+   |  └─ 设备是否在线 (device.status == 'online')
+   ├─ MQTT 发布开锁指令：
+   |  ├─ Topic: {device_secret}/request/unlock
+   |  ├─ Payload: {"action": "unlock", "user_id": "..."}
+   |  └─ ESP32 订阅此 Topic，接收指令并执行
+   ├─ 创建开锁日志：
+   |  ├─ log_helper.create_remote_unlock_log(mac, user_id)
+   |  └─ 记录到 logs 表：unlock_method='remote_app'
+   └─ 返回成功响应 (JSON)
+   ↓
+4. 创建开锁事件日志 (database: logs表)
+   ├─ user_id: 发起开锁的用户
+   ├─ device_mac: 设备 MAC 地址
+   ├─ action: 'unlock'
+   ├─ unlock_method: 'remote_app'
+   ├─ success: true (假设成功)
+   ├─ timestamp: 时间戳
+   └─ 用于后续审计和日志查询
+   ↓
+5. ESP32 硬件动作
+   ├─ 监听 MQTT Topic
+   ├─ 接收到 unlock 指令
+   ├─ 驱动继电器输出信号 (GPIO)
+   └─ 磁力锁释放，用户推开门
+   ↓
+6. 返回结果到小程序
+   ├─ 成功：显示"开锁成功"toast
+   ├─ 失败：显示错误信息
+   └─ 刷新快照
+```
+
+**权限检查实现**：
+```python
+# 代码位置：backend/auth/permissions.py
+
+def check_device_access(user_id, device_mac):
+    """
+    检查用户是否有权访问该设备
+    
+    检查流程：
+    1. 查询 UserDevicePermission 表
+    2. 验证状态为 'approved'
+    3. 如果权限拒绝或不存在，返回 False
+    """
+    permission = UserDevicePermission.query.filter(
+        UserDevicePermission.user_id == user_id,
+        UserDevicePermission.device_mac == device_mac,
+        UserDevicePermission.status == 'approved'
+    ).first()
+    
+    if not permission:
+        raise PermissionError(f"User {user_id} not permitted to access {device_mac}")
+```
+
+**MQTT 协议细节**：
+- Broker：mqtt.5i03.cn:1883
+- Topic 模式：`{DEVICE_SECRET}/request/unlock`
+- QoS：1 (保证至少一次送达)
+- Retain：false (不持久化)
+
+---
+
+#### 流程5：查看开锁日志
+
+**流程步骤**：
+```
+1. 用户进入日志页面 (pages/logs/index.js)
+   ├─ 显示我的设备的最近开锁日志
+   └─ 最多显示 50 条（分页）
+   ↓
+2. 小程序请求日志数据
+   ├─ GET /api/logs/my_devices?page=1&per_page=50
+   ├─ 发送 Token （自动处理）
+   └─ 后端返回日志列表
+   ↓
+3. 后端查询日志 (backend/api/routes.py: get_my_devices_logs())
+   ├─ 从 Token 解析用户 ID
+   ├─ 数据库查询：
+   |  SELECT logs.* FROM logs
+   |  WHERE logs.device_mac IN (
+   |    SELECT device_mac FROM user_device_permissions
+   |    WHERE user_id = ? AND status = 'approved'
+   |  )
+   |  ORDER BY logs.timestamp DESC
+   |  LIMIT 50
+   ├─ 仅返回用户有权限的设备日志
+   └─ 返回格式化后的日志列表
+   ↓
+4. 小程序接收并展示
+   ├─ 解析 JSON 日志列表
+   ├─ 循环渲染日志项
+   |  ├─ 设备名称和位置
+   |  ├─ 开锁方法 (远程app / 刷卡 / 指纹等)
+   |  ├─ 时间戳 (人类可读格式)
+   |  └─ 成功/失败状态
+   ├─ 支持下拉刷新
+   └─ 支持分页加载更多
+```
+
+**数据库日志字段**：
+```sql
+CREATE TABLE logs (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(50),
+  device_mac VARCHAR(17),
+  action VARCHAR(50),              -- 'unlock', 'lock', 'access', etc
+  unlock_method VARCHAR(50),       -- 'remote_app', 'card', 'fingerprint'
+  success BOOLEAN,                 -- 是否成功
+  timestamp DATETIME,
+  snapshot_url VARCHAR(255),       -- 快照 URL (可选)
+  created_at DATETIME
+);
+```
+
+---
+
+#### 流程6：权限申请和审批
+
+**流程步骤（用户端）**：
+```
+1. 用户进入设置页面 (pages/settings/config.js)
+   ├─ 显示已绑定的设备列表
+   ├─ 显示待审批的权限申请列表
+   └─ 显示已被拒绝的申请列表
+   ↓
+2. 用户申请新设备权限
+   ├─ 点击"申请设备"按钮
+   ├─ 弹出设备选择对话框
+   ├─ 选择想要访问的设备
+   ├─ 点击确认，发送请求
+   └─ POST /api/device/{mac}/apply
+   ↓
+3. 小程序提示
+   ├─ 成功：显示"申请已提交，等待审批"
+   └─ 失败：显示错误原因
+```
+
+**流程步骤（管理员审批）**：
+```
+1. 管理员登录网页管理后台
+   └─ URL: https://dev.api.5i03.cn/admin
+   ↓
+2. 进入"权限审批"页面
+   ├─ 显示所有待审批的申请
+   ├─ 支持按状态筛选 (待审批/已批准/已拒绝)
+   └─ 待审批数量在侧边栏显示徽章
+   ↓
+3. 管理员点击"批准"或"拒绝"按钮
+   ├─ 提交 POST /admin/permissions/{id}?action=approve
+   ├─ 或 POST /admin/permissions/{id}?action=reject
+   └─ 后端更新数据库权限状态
+   ↓
+4. 数据库状态变更
+   ├─ 批准：status = 'approved'
+   ├─ 拒绝：status = 'rejected'
+   └─ 记录审批人和审批时间
+   ↓
+5. 用户收到通知 (需实现推送)
+   └─ 用户重新登录小程序时会看到最新的权限状态
+```
+
+**权限表结构**：
+```sql
+CREATE TABLE user_device_permissions (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(50),
+  device_mac VARCHAR(17),
+  status ENUM('pending', 'approved', 'rejected'),
+  apply_time DATETIME,
+  review_time DATETIME,
+  reviewed_by VARCHAR(50),
+  UNIQUE KEY uc_user_device (user_id, device_mac)
+);
+```
+
+---
+
+### 后端系统架构
+
+#### 文件结构说明
+
+```
+backend/
+├── app.py                          # Flask 应用入口，配置
+│   ├─ 初始化 Flask app
+│   ├─ 注册蓝本 (Blueprint)
+│   ├─ 配置 CORS、MQTT 等中间件
+│   └─ ProxyFix 反向代理支持
+│
+├── run.py                          # 启动脚本
+│   └─ python run.py 启动开发服务器
+│
+├── requirements.txt                # Python 依赖库列表
+│   ├─ Flask、SQLAlchemy、PyJWT 等
+│   └─ 生产部署时: pip install -r requirements.txt
+│
+├── shared/                         # 共享工具类（核心）
+│   ├─ db_helper.py                # 数据库 CRUD 统一接口
+│   │  └─ 所有数据库操作都通过此类
+│   ├─ response.py                 # API 响应格式统一
+│   │  └─ 所有 API 返回都使用此类
+│   ├─ logging.py                  # 日志创建辅助函数
+│   │  └─ 创建 AccessLog、UnlockLog 等
+│   ├─ serializers.py              # 模型序列化（转字典）
+│   └─ validators.py               # 数据验证 (可选)
+│
+├── core/                          # 核心业务逻辑
+│   ├── models/                    # 数据库模型
+│   │   ├─ __init__.py
+│   │   ├─ mixins.py              # 基类 Mixin
+│   │   │  ├─ BaseIDMixin - 所有模型都有 ID
+│   │   │  ├─ TimestampMixin - created_at/updated_at
+│   │   │  └─ SerializerMixin - to_dict() 序列化
+│   │   ├─ user.py                # User 用户模型
+│   │   │  └─ 存储用户信息、认证信息
+│   │   ├─ device.py              # Device 设备模型
+│   │   │  └─ 存储锁设备、在线状态
+│   │   ├─ log.py                 # Log 日志模型
+│   │   │  └─ 存储开锁日志、访问记录
+│   │   ├─ permission.py          # UserDevicePermission 权限模型
+│   │   │  └─ 存储用户-设备权限关系
+│   │   ├─ application.py         # DeviceApplication 申请模型
+│   │   │  └─ 存储权限申请单
+│   │   └─ admin.py               # Admin 管理员模型
+│   │      └─ 存储后台管理员信息
+│   │
+│   └── database/                 # 数据库相关
+│       └─ helpers.py             # 数据库辅助函数
+│
+├── auth/                          # 身份认证和权限控制
+│   ├─ __init__.py
+│   ├─ decorators.py              # @token_required 装饰器
+│   │  └─ 验证 JWT Token
+│   └─ permissions.py             # 权限检查
+│      ├─ check_device_access() - 设备权限 BOLA 防护
+│      └─ require_admin() - 管理员权限检查
+│
+├── api/                          # 业务 API 路由
+│   ├─ __init__.py               # 创建 Blueprint
+│   ├─ routes.py                 # RESTful 路由（核心，1700+ 行）
+│   │  ├─ POST /api/login - 登录 (微信/密码)
+│   │  ├─ GET /api/user/devices - 获取用户设备列表
+│   │  ├─ POST /api/devices/{mac}/unlock - 远程开锁
+│   │  ├─ GET /api/device/snapshot/{mac} - 获取快照
+│   │  ├─ POST /api/hardware/snapshot - ESP32 推送快照
+│   │  ├─ GET /api/logs/* - 查询日志
+│   │  └─ ... (共 50+ 个路由)
+│   └─ upload.py                 # 文件上传处理
+│
+├── admin/                        # 网页管理后台
+│   ├─ routes.py                 # 管理员路由
+│   │  ├─ GET /admin - 仪表盘
+│   │  ├─ GET /admin/users - 用户管理
+│   │  ├─ GET /admin/devices - 设备管理
+│   │  ├─ GET /admin/permissions - 权限审批
+│   │  └─ GET /admin/logs - 日志查看
+│   ├── templates/               # Jinja2 模板
+│   │   ├─ base.html            # 基础模板（导航栏、侧边栏）
+│   │   ├─ login.html           # 登录页面
+│   │   ├─ dashboard.html       # 仪表盘
+│   │   ├─ users.html           # 用户管理页面
+│   │   ├─ devices.html         # 设备管理页面
+│   │   ├─ permissions.html     # 权限审批页面
+│   │   └─ logs.html            # 日志页面
+│   └── static/                 # 静态资源
+│       └─ images/
+│
+├── mqtt/                        # MQTT 消息队列
+│   ├─ client.py                # MQTT 连接和消息处理
+│   │  ├─ on_connect() - 连接成功时订阅主题
+│   │  ├─ on_message() - 接收设备消息
+│   │  └─ publish_command() - 发送命令到设备
+│   └─ __init__.py
+│
+├── Dockerfile                   # Docker 镜像定义
+│   └─ 多阶段构建：pip install → gunicorn 启动
+│
+├── docker-compose.yml           # 容器编排（MySQL + Nginx + Backend）
+│   └─ 定义三个服务：backend、mysql、nginx
+│
+├── nginx.conf                   # Nginx 反向代理配置
+│   ├─ 监听 80/443 端口
+│   ├─ 转发到后端 Flask (5000)
+│   ├─ 配置 SSL 证书
+│   └─ 配置代理头部 (X-Forwarded-*)
+│
+└── config.example.py            # 配置文件示例
+    └─ 记录所有可配置的环境变量
+```
+
+#### 数据流向
+
+**请求处理流程**：
+```
+客户端请求
+  │
+  ├─ 到达 Nginx (反向代理)
+  │  ├─ 转发头部处理 (X-Forwarded-*)
+  │  └─ 转发到 Flask Backend:5000
+  │
+  ├─ Flask 接收请求
+  │  ├─ CORS 中间件检查
+  │  ├─ 解析请求头和请求体
+  │  └─ 路由分发
+  │
+  ├─ 路由处理 (api/routes.py)
+  │  ├─ @token_required 验证 JWT
+  │  ├─ permission_helper 权限检查
+  │  ├─ db_helper 数据库操作
+  │  ├─ response_helper 构造响应
+  │  └─ 业务逻辑处理
+  │
+  ├─ 数据库操作 (MySQL)
+  │  ├─ CRUD 通过 db_helper
+  │  ├─ SQLAlchemy ORM 转换
+  │  └─ 事务管理
+  │
+  ├─ 返回响应
+  │  ├─ response_helper.success() 或 error()
+  │  ├─ JSON 格式化
+  │  └─ 设置 CORS 响应头
+  │
+  └─ 客户端接收
+     ├─ 解析 JSON
+     └─ 业务处理
+```
+
+---
+
+### 小程序架构
+
+#### 页面结构
+
+```
+miniprogram-1/
+├── app.js                        # 全局应用逻辑
+│   ├─ 初始化配置、API地址
+│   ├─ 恢复用户会话 (Token)
+│   ├─ 全局变量 globalData
+│   └─ 导出便捷方法 (get, post, put 等)
+│
+├── pages/                        # 所有页面
+│   │
+│   ├─ login/                     # 登录页面
+│   │   ├─ index.js              # 登录逻辑
+│   │   ├─ index.wxml            # UI 模板
+│   │   ├─ index.wxss            # 样式
+│   │   └─ index.json            # 页面配置
+│   │
+│   ├─ console/                   # 首页-设备列表
+│   │   ├─ index.js              # 控制台逻辑
+│   │   │  ├─ loadDevices() - 加载设备/权限检查
+│   │   │  └─ onUnlockDevice() - 开锁
+│   │   ├─ index.wxml            # 设备卡片列表
+│   │   ├─ index.wxss            # 卡片样式
+│   │   └─ index.json
+│   │
+│   ├─ device-detail/             # 设备详情页
+│   │   ├─ index.js              # 详情页逻辑
+│   │   │  ├─ loadDeviceSnapshot() - 加载快照（三层降级）
+│   │   │  ├─ onUnlockDevice() - 开锁
+│   │   │  └─ refreshSnapshot() - 定时刷新
+│   │   ├─ index.wxml            # 快照和操作按钮
+│   │   ├─ index.wxss
+│   │   └─ index.json
+│   │
+│   ├─ logs/                      # 日志查询页
+│   │   ├─ index.js              # 日志列表逻辑
+│   │   ├─ index.wxml            # 日志列表
+│   │   ├─ index.wxss
+│   │   ├─ list.js               # 详细日志页
+│   │   ├─ list.wxml
+│   │   ├─ list.wxss
+│   │   └─ list.json
+│   │
+│   ├─ users/                     # 用户管理页
+│   │   ├─ manage.js             # 用户管理逻辑
+│   │   │  ├─ loadUserBindings() - 查看已绑定设备
+│   │   │  ├─ applyDeviceAccess() - 申请设备权限
+│   │   │  ├─ bindWeChat() - 绑定微信
+│   │   │  └─ unbindWeChat() - 解绑微信
+│   │   ├─ manage.wxml           # 用户操作界面
+│   │   ├─ manage.wxss
+│   │   └─ manage.json
+│   │
+│   └─ settings/                  # 设置页面
+│       ├─ config.js             # 设置逻辑
+│       │  ├─ showBindingStatus() - 显示绑定状态
+│       │  ├─ logout() - 注销登录
+│       │  └─ switchEnvironment() - 切换环境
+│       ├─ config.wxml           # 设置界面
+│       ├─ config.wxss
+│       └─ config.json
+│
+├── utils/                        # 工具函数库
+│   ├─ request.js                # 统一 HTTP 请求
+│   │  ├─ request({url, method, data}) - 基础请求
+│   │  ├─ 自动附加 Token
+│   │  ├─ 自动处理 401 登录过期
+│   │  └─ 自动错误检查
+│   ├─ page-helper.js            # 页面工具函数
+│   │  ├─ showSuccess()
+│   │  ├─ showError()
+│   │  ├─ handleUnauthorized()
+│   │  └─ ensureLogin()
+│   └─ date-helper.js            # 日期格式化
+│      └─ formatTime()
+│
+├── config/                       # 配置
+│   └─ env.js                    # 环境配置
+│      ├─ getApiUrl() - 根据环境返回 API 地址
+│      ├─ getConfig() - 获取服务器配置
+│      ├─ initConfig() - 初始化配置
+│      └─ setEnv() - 切换环境 (dev/test/prod)
+│
+├── styles/                       # 全局样式
+│   └─ common.wxss              # 通用样式（颜色、字体、间距等）
+│
+└── assets/                       # 静态资源
+    └─ icons/                    # 图标 (SVG)
+```
+
+#### 数据流
+
+**小程序全局变量 (globalData)**：
+```javascript
+{
+  apiUrl: 'https://dev.api.5i03.cn',
+  config: {
+    timeout: 8000,
+    servers: { video_stream: '...' }
+  },
+  user: {
+    id: 'USER_ID',
+    name: '张三',
+    role: 'student',
+    avatar: 'https://...'
+  },
+  token: 'eyJhbGc...',
+  devices: [
+    { mac_address: 'AA:BB:CC:DD:EE:FF', name: '宿舍门', location: '101' },
+    ...
+  ]
+}
+```
+
+---
+
+### ESP32 固件架构
+
+#### 代码结构
+
+```
+esp32s3/
+├── esp32s3.ino                   # 主程序文件
+│   ├─ setup() - 初始化
+│   ├─ loop() - 主循环
+│   ├─ 摄像头和 WiFi 初始化
+│   ├─ MQTT 连接和消息处理
+│   └─ HTTP 快照服务器
+│
+└── camera_pins.h                 # 摄像头引脚配置
+    ├─ 数据线（D0-D7）
+    ├─ 控制线（HREF、VSYNC 等）
+    ├─ I2C 通信线
+    └─ SPI 通信线
+```
+
+#### 硬件工作流
+
+```
+步骤1：初始化
+  ├─ WiFi 连接 (SmartConfig 配置)
+  ├─ NTP 时间同步
+  ├─ 摄像头初始化
+  └─ MQTT 连接
+
+步骤2：运行循环
+  ├─ 每 2 秒推送快照到后端
+  |  ├─ 捕获摄像头帧 (JPEG 格式)
+  |  ├─ POST /api/hardware/snapshot
+  |  └─ 后端保存到内存缓存 device_frames
+  │
+  ├─ 监听 MQTT 消息
+  |  ├─ Topic: {DEVICE_SECRET}/request/unlock
+  |  ├─ 接收开锁指令
+  |  ├─ 驱动继电器 (HIGH 500ms，然后 LOW)
+  |  └─ 发送执行结果回调
+  │
+  ├─ 提供 HTTP 快照服务
+  |  ├─ GET http://ESP32_IP:81/stream?action=snapshot
+  |  ├─ 返回最新帧 (JPEG)
+  |  └─ 响应时间 < 100ms
+  │
+  └─ 心跳监测
+     ├─ 每 30 秒发一次心跳
+     └─ 后端更新 device.last_heartbeat
+
+步骤3：异常处理
+  ├─ WiFi 断连：自动重连
+  ├─ MQTT 连接失败：重试
+  ├─ 摄像头错误：恢复捕获
+  └─ 内存溢出：自动重启
+```
+
+**继电器控制**：
+```c
+#define RELAY_PIN 12  // 继电器在 GPIO12
+
+void unlock_device() {
+  digitalWrite(RELAY_PIN, HIGH);   // 输出高电平，激活继电器
+  delay(500);                      // 保持 500ms
+  digitalWrite(RELAY_PIN, LOW);    // 输出低电平，继电器复位
+}
+```
+
+---
+
+### 数据库架构
+
+#### ER 图（逻辑关系）
+
+```
+users (用户表)
+├─ id PK
+├─ openid UK (微信)
+├─ username UK
+├─ password
+├─ name
+├─ role (student/warden/admin)
+└─ created_at
+
+      ↓ (1:n)
+
+user_device_permissions (权限表)
+├─ id PK
+├─ user_id FK → users.id
+├─ device_mac FK → devices.mac_address
+├─ status (pending/approved/rejected)
+├─ apply_time
+├─ review_time
+└─ reviewed_by FK → admins.id
+
+      ↓ (n:1)
+
+devices (设备表)
+├─ mac_address PK
+├─ name
+├─ location
+├─ ip_address (本地 IP)
+├─ status (online/offline)
+├─ last_heartbeat
+└─ created_at
+
+      ↓ (1:n)
+
+logs (日志表)
+├─ id PK
+├─ user_id FK → users.id (可为 null)
+├─ device_mac FK → devices.mac_address
+├─ action (unlock/lock/access)
+├─ unlock_method
+├─ success
+├─ timestamp
+└─ created_at
+
+admins (管理员表)
+├─ id PK
+├─ username UK
+├─ password
+├─ email
+├─ role
+└─ created_at
+```
+
+#### 主要表结构详解
+
+**users 表**：
+```sql
+CREATE TABLE users (
+  id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  openid VARCHAR(100) UNIQUE,           -- 微信 OpenID
+  username VARCHAR(50) UNIQUE,          -- 用户名
+  password VARCHAR(100),                -- 密码哈希
+  name VARCHAR(100),                    -- 姓名
+  avatar VARCHAR(255),                  -- 头像 URL
+  role ENUM('student', 'warden', 'admin') DEFAULT 'student',
+  fingerprint_id VARCHAR(50) UNIQUE,    -- 指纹 ID
+  nfc_uid VARCHAR(50) UNIQUE,           -- NFC 卡 UID
+  token VARCHAR(100) UNIQUE,            -- JWT Token
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW() ON UPDATE NOW()
+);
+```
+
+**user_device_permissions 表**：
+```sql
+CREATE TABLE user_device_permissions (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(50) NOT NULL,
+  device_mac VARCHAR(17) NOT NULL,
+  status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  apply_time TIMESTAMP DEFAULT NOW(),
+  review_time TIMESTAMP,
+  reviewed_by VARCHAR(50),              -- 审批人 ID
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (device_mac) REFERENCES devices(mac_address),
+  UNIQUE KEY uc_user_device (user_id, device_mac)
+);
+```
+
+**devices 表**：
+```sql
+CREATE TABLE devices (
+  mac_address VARCHAR(17) PRIMARY KEY,
+  name VARCHAR(100),
+  room_number VARCHAR(10),
+  location VARCHAR(100),                -- 地位置描述
+  ip_address VARCHAR(15),               -- 本地 IP (优先级3快照)
+  status ENUM('online', 'offline') DEFAULT 'offline',
+  last_heartbeat TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW() ON UPDATE NOW()
+);
+```
+
+**logs 表**：
+```sql
+CREATE TABLE logs (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(50),                  -- 可为 null（如设备自动锁)
+  device_mac VARCHAR(17) NOT NULL,
+  action VARCHAR(50),                   -- unlock/lock/access/snapshot
+  unlock_method VARCHAR(50),            -- remote_app/card/fingerprint
+  success BOOLEAN DEFAULT true,
+  failure_reason VARCHAR(255),
+  timestamp TIMESTAMP,
+  snapshot_url VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (device_mac) REFERENCES devices(mac_address),
+  INDEX idx_device_time (device_mac, timestamp)
+);
+```
+
+---
+
+### 系统间通信协议
+
+#### HTTP API 协议
+
+**基础 URL**：`https://dev.api.5i03.cn/api`
+
+**身份认证**：Bearer Token (JWT)
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiI...
+```
+
+**响应格式**（总是 JSON）：
+```json
+{
+  "success": true,
+  "message": "操作成功",
+  "data": { /* 可选的返回数据 */ }
+}
+
+{
+  "success": false,
+  "message": "错误描述",
+  "error_code": "ERROR_CODE",
+  "data": null
+}
+```
+
+#### MQTT 协议
+
+**Broker 信息**：
+- 地址：mqtt.5i03.cn
+- 端口：1883
+- 用户名：（如果需要）
+- 密码：（如果需要）
+
+**Topic 设计**：
+```
+{DEVICE_SECRET}/request/unlock        # 后端发送开锁指令
+  ├─ 发布者：后端 Flask
+  ├─ 订阅者：ESP32
+  └─ Payload: {"action": "unlock", "user_id": "..."}
+
+{DEVICE_SECRET}/response/heartbeat    # ESP32 发送心跳
+  ├─ 发布者：ESP32
+  ├─ 订阅者：后端 MQTT 客户端
+  └─ Payload: {"status": "online", "uptime": 3600}
+
+{DEVICE_SECRET}/snapshot              # ESP32 推送快照
+  ├─ 发布者：ESP32
+  ├─ 订阅者：后端 MQTT 客户端
+  └─ Payload: 二进制 JPEG 数据
+```
+
+---
+
+### 安全考虑
+
+#### 任务级安全
+
+1. **认证**
+   - 微信登录：通过 code2session 验证微信账户
+   - JWT Token：7 天有效期，自动过期
+   - 后台管理员：用户名/密码
+
+2. **授权（权限检查）**
+   - 设备权限：权限表 (user_device_permissions)
+   - BOLA 防护：确保用户只能操作有权限的设备
+   - 管理员权限：仅 admin 角色可以审批权限
+
+3. **传输安全**
+   - HTTPS：所有 API 通信加密
+   - JWT 签名：Token 防篡改
+   - MQTT SSL：可选（目前使用明文）
+
+4. **数据隐私**
+   - 日志脱敏：不存储明文密码
+   - 快照隐私：只有有权限用户可以查看
+   - 用户信息：POST 时不返回密码哈希
+
+---
+
+## 代码规范检查清单
+
+### 后端 (Python)
+
+- [ ] 所有数据库操作都使用 `db_helper`
+- [ ] 所有 API 响应都使用 `response_helper`
+- [ ] 所有权限检查都使用 `permission_helper`
+- [ ] 所有日志创建都使用 `log_helper`
+- [ ] 所有路由都有异常处理 (try-except)
+- [ ] 所有涉及权限的操作都进行权限检查
+- [ ] MAC 地址都标准化处理
+
+### 小程序 (JavaScript)
+
+- [ ] 所有网络请求都通过 `utils/request.js`
+- [ ] 所有 UI 提示都通过 `utils/page-helper.js`
+- [ ] 没有硬编码 API URL（使用 `envConfig`)
+- [ ] 没有重复代码（复用工具函数）
+- [ ] 所有页面都检查登录状态
+
+### ESP32 (C++)
+
+- [ ] MQTT 连接异常处理
+- [ ] WiFi 连接异常处理
+- [ ] 摄像头超时不会导致整个程序卡顿
+- [ ] 内存泄漏检查
+
+---
+
+## 故障排查指南
+
+### 问题1：小程序无法登录
+
+**可能原因**：
+1. 后端服务未启动
+2. Token 验证失败
+3. 微信服务器不可达
+
+**排查步骤**：
+```bash
+# 步骤1：检查后端服务
+curl -v https://dev.api.5i03.cn/api/ping
+
+# 步骤2：检查后端日志
+docker-compose logs backend | tail -50
+
+# 步骤3：测试微信登录端点
+curl -X POST https://dev.api.5i03.cn/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"login_type": "password", "username": "admin", "password": "123456"}'
+```
+
+### 问题2：开锁没有反应
+
+**可能原因**：
+1. MQTT 连接断开
+2. ESP32 离线
+3. 权限检查失败
+
+**排查步骤**：
+```bash
+# 步骤1：检查 MQTT 连接
+docker-compose logs backend | grep "MQTT"
+
+# 步骤2：检查设备在线状态
+curl -H "Authorization: Bearer {token}" \
+  https://dev.api.5i03.cn/api/devices | grep "status"
+
+# 步骤3：检查权限表
+mysql> SELECT * FROM user_device_permissions 
+       WHERE user_id = 'xxx' AND device_mac = 'AA:BB:CC:DD:EE:FF';
+```
+
+---
+
+**程序运作流程文档完成**  
+**最后更新时间**：2026年3月5日  
+**文档版本**：3.0
