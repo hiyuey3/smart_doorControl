@@ -1533,6 +1533,95 @@ def proxy_device_snapshot(mac_address):
         return response_helper.error('获取快照失败', 'SNAPSHOT_FAILED', 503)
 
 
+@bp.route('/device/stream/<mac_address>', methods=['GET'])
+@token_required
+def proxy_device_stream(mac_address):
+    """
+    实时 MJPEG 视频流代理接口
+    
+    功能：代理 ESP32 的 MJPEG 流到前端，支持权限检查
+    
+    请求示例：
+    GET /api/device/stream/ACA704260CFC
+    
+    响应：
+    - Content-Type: multipart/x-mixed-replace; boundary=frame
+    - 持续的 MJPEG 帧数据流
+    
+    客户端支持：
+    - 微信小程序：<video> 标签（需要后端转为 HLS 或使用 MJPEG 兼容播放器）
+    - Web 浏览器：<img> 标签直接支持 MJPEG，或使用 JavaScript 解析
+    """
+    from app import db
+    from time import time
+    
+    current_user = g.current_user
+    
+    # 将 MAC 地址转换为标准格式（带冒号）
+    mac_clean = mac_address.replace(':', '').upper()
+    if len(mac_clean) != 12:
+        return response_helper.bad_request('MAC 地址格式错误', 'INVALID_MAC_FORMAT')
+    
+    mac_standard = ':'.join([mac_clean[i:i+2] for i in range(0, 12, 2)])
+    
+    # 1. 验证权限
+    error_resp = permission_helper.check_device_access(current_user, mac_standard)
+    if error_resp[0]:
+        return response_helper.error(error_resp[0]['message'], error_resp[0]['error_code'], error_resp[1])
+    
+    # 2. 查询设备
+    device, error = db_helper.get_by_filter(Device, mac_address=mac_standard)
+    if error or not device:
+        return response_helper.not_found('设备不存在', 'DEVICE_NOT_FOUND')
+    
+    # 3. 检查设备在线状态
+    if device.status != 'online':
+        return response_helper.error('设备离线', 'DEVICE_OFFLINE', 503)
+    
+    # 4. 获取 MJPEG 流地址
+    stream_url = current_app.config.get('DEVICE_MJPEG_STREAM_URL', 
+                                        'http://192.168.3.161:81/stream')
+    
+    try:
+        # 5. 代理 ESP32 的 MJPEG 流到前端
+        print(f'[Stream] INFO: Proxying MJPEG stream for {mac_standard} from {stream_url}')
+        
+        response = requests.get(stream_url, stream=True, timeout=5)
+        response.raise_for_status()
+        
+        # 6. 直接转发 MJPEG 数据流
+        def generate_stream():
+            """生成器函数：逐块转发 MJPEG 数据"""
+            try:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+            except Exception as e:
+                print(f'[Stream] ERROR: Stream interrupted for {mac_standard}: {e}')
+            finally:
+                response.close()
+        
+        return Response(
+            generate_stream(),
+            content_type=response.headers.get('content-type', 'multipart/x-mixed-replace; boundary=frame'),
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'Connection': 'keep-alive'
+            }
+        )
+        
+    except requests.exceptions.Timeout:
+        print(f'[Stream] WARN: ESP32 stream timeout for {mac_standard}')
+        current_app.logger.warning(f'Stream proxy timeout for {mac_standard}')
+        return response_helper.error('设备流超时', 'DEVICE_TIMEOUT', 504)
+    except requests.exceptions.RequestException as e:
+        print(f'[Stream] ERROR: ESP32 stream error for {mac_standard}: {e}')
+        current_app.logger.error(f'Stream proxy error: {e}')
+        return response_helper.error('获取流失败', 'STREAM_FAILED', 503)
+
+
 # 新增：HTTP 推送模型 - 设备主动上传快照
 
 @bp.route('/device/upload_snapshot', methods=['POST'])

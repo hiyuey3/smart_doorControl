@@ -153,25 +153,30 @@ Page({
   },
 
   /**
-   * 第二部分：HTTP 快照加载（通过后端代理）
+   * 第二部分：实时快照加载 + MJPEG 流支持（通过后端代理）
    */
   
   loadDeviceSnapshot(mac_address) {
-    console.log(' 加载设备快照 ');
+    console.log(' 加载设备实时快照 ');
     
     const apiUrl = envConfig.getApiUrl();
     const token = wx.getStorageSync('token');
     const mac_clean = mac_address.replace(/:/g, '');
     
-    // 使用后端代理 API 获取快照（支持权限验证）
+    // 注意：WeChat 小程序 <video> 标签不原生支持 MJPEG
+    // 当前方案：使用快照轮询（每 10s 刷新）
+    // 未来升级：后端支持 MJPEG 流 (/api/device/stream/{mac})，可用于 WebRTC/HLS 转发
+    const snapshotUrl = `${apiUrl}/device/snapshot/${mac_clean}`;
+    
+    // 使用后端代理 API 获取快照（支持权限验证 + 缓存 + 在线检查）
     wx.request({
-      url: `${apiUrl}/device/snapshot/${mac_clean}`,
+      url: snapshotUrl,
       method: 'GET',
       header: {
         'Authorization': 'Bearer ' + token
       },
       responseType: 'arraybuffer',
-      timeout: 8000,  // 8秒超时（留给用户显示占位图）
+      timeout: 8000,
       success: (res) => {
         if (res.statusCode === 200) {
           // 将二进制数据转换为 base64 URI
@@ -186,7 +191,6 @@ Page({
           });
           console.log('快照加载成功');
         } else {
-          // 非 200 响应（504、404 等）
           console.error('快照加载失败，HTTP状态码:', res.statusCode);
           this.setData({ 
             isSnapshotLoading: false,
