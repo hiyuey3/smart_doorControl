@@ -121,14 +121,25 @@ def add_user():
 def delete_user(user_id):
     """删除用户（RESTful：POST /users/<id>，通过_method=DELETE标识）"""
     user = User.query.get_or_404(user_id)
+    action = request.form.get('action', 'delete')  # 默认为删除操作
+    
     try:
-        db.session.delete(user)
+        if action == 'delete':
+            db.session.delete(user)
+        elif action == 'edit':
+            user.name = request.form.get('name')
+            user.role = request.form.get('role', 'student')
+            user.fingerprint_id = request.form.get('fingerprint_id')
+            user.nfc_uid = request.form.get('nfc_uid')
+        else:
+            raise ValueError(f'无效的操作: {action}')
+        
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         return render_template('admin/users.html', 
                              users=User.query.order_by(User.created_at.desc()).all(),
-                             error=f'删除用户失败: {str(e)}')
+                             error=f'操作失败: {str(e)}')
     return redirect(url_for('web.users'))
 
 
@@ -149,6 +160,67 @@ def devices():
     """设备管理页面"""
     devices = Device.query.order_by(Device.last_heartbeat.desc()).all()
     return render_template('admin/devices.html', devices=devices)
+
+
+@web_bp.route('/devices', methods=['POST'])
+@login_required
+def add_device():
+    """添加设备（RESTful：POST /devices）"""
+    data = request.form
+    try:
+        # 检查MAC地址是否已存在
+        existing = Device.query.filter_by(mac_address=data.get('mac_address')).first()
+        if existing:
+            raise ValueError(f'MAC地址已存在: {data.get("mac_address")}')
+        
+        device = Device(
+            name=data.get('name'),
+            mac_address=data.get('mac_address'),
+            location=data.get('location'),
+            room_number=data.get('room_number'),
+            status='offline'  # 新设备默认离线
+        )
+        
+        db.session.add(device)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return render_template('admin/devices.html', 
+                             devices=Device.query.order_by(Device.last_heartbeat.desc()).all(),
+                             error=f'添加设备失败: {str(e)}')
+    return redirect(url_for('web.devices'))
+
+
+@web_bp.route('/devices/<int:device_id>', methods=['POST'])
+@login_required
+def manage_device(device_id):
+    """管理设备（编辑或删除）"""
+    device = Device.query.get_or_404(device_id)
+    action = request.form.get('action')  # 'edit' 或 'delete'
+    
+    try:
+        if action == 'edit':
+            # 编辑设备信息
+            device.name = request.form.get('name')
+            device.location = request.form.get('location')
+            device.room_number = request.form.get('room_number')
+            db.session.commit()
+        
+        elif action == 'delete':
+            # 删除设备
+            db.session.delete(device)
+            db.session.commit()
+        
+        else:
+            raise ValueError(f'无效的操作: {action}')
+    
+    except Exception as e:
+        db.session.rollback()
+        return render_template('admin/devices.html', 
+                             devices=Device.query.order_by(Device.last_heartbeat.desc()).all(),
+                             error=f'操作失败: {str(e)}')
+    
+    return redirect(url_for('web.devices'))
 
 
 @web_bp.route('/permissions')

@@ -8,17 +8,32 @@
     <p class="page-subtitle">在线设备状态监控</p>
 </div>
 
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    {{ error }}
+</div>
+{% endif %}
+
 <div class="card">
-    <div class="card-header">设备列表</div>
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>设备列表</span>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+                添加设备
+            </button>
+        </div>
+    </div>
     <table>
         <thead>
             <tr>
                 <th>设备名称</th>
                 <th>MAC 地址</th>
                 <th>房间号</th>
+                <th>位置</th>
                 <th>状态</th>
                 <th>最后心跳</th>
                 <th>注册时间</th>
+                <th>操作</th>
             </tr>
         </thead>
         <tbody>
@@ -27,6 +42,7 @@
                 <td>{{ device.name or '未命名' }}</td>
                 <td style="font-family: monospace; font-size: 12px;">{{ device.mac_address }}</td>
                 <td>{{ device.room_number or '-' }}</td>
+                <td>{{ device.location or '-' }}</td>
                 <td>
                     {% if device.status == 'online' %}
                     <span class="badge badge-success">在线</span>
@@ -36,13 +52,108 @@
                 </td>
                 <td>{{ device.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if device.last_heartbeat else '从未' }}</td>
                 <td>{{ device.created_at.strftime('%Y-%m-%d') if device.created_at else '-' }}</td>
+                <td>
+                    <div style="display: inline-flex; gap: 8px;">
+                        <!-- 编辑按钮 -->
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editDeviceModal{{ device.id }}">
+                            编辑
+                        </button>
+                        <!-- 删除表单 -->
+                        <form method="POST" action="{{ url_for('web.manage_device', device_id=device.id) }}" 
+                              onsubmit="return confirm('确定删除此设备吗？')" 
+                              style="display: inline;">
+                            <input type="hidden" name="action" value="delete">
+                            <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            
+            <!-- 编辑设备模态框 -->
+            <tr style="display: none;">
+                <td colspan="8">
+                    <div class="modal fade" id="editDeviceModal{{ device.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('web.manage_device', device_id=device.id) }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">编辑设备</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">设备名称</label>
+                                            <input type="text" class="form-control" name="name" value="{{ device.name or '' }}" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">MAC 地址</label>
+                                            <input type="text" class="form-control" value="{{ device.mac_address }}" disabled>
+                                            <small class="text-muted">MAC地址无法修改，创建后固定</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">位置</label>
+                                            <input type="text" class="form-control" name="location" value="{{ device.location or '' }}">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">房间号</label>
+                                            <input type="text" class="form-control" name="room_number" value="{{ device.room_number or '' }}">
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <input type="hidden" name="action" value="edit">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                        <button type="submit" class="btn btn-primary">保存</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="6" class="text-center text-muted">暂无设备数据</td>
+                <td colspan="8" class="text-center text-muted">暂无设备数据</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+<!-- 添加设备模态框 -->
+<div class="modal fade" id="addDeviceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('web.add_device') }}" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加设备</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">设备名称</label>
+                        <input type="text" class="form-control" name="name" placeholder="e.g. 宿舍门禁" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">MAC 地址</label>
+                        <input type="text" class="form-control" name="mac_address" placeholder="e.g. AA:BB:CC:DD:EE:FF" required>
+                        <small class="text-muted">格式: AA:BB:CC:DD:EE:FF</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">位置</label>
+                        <input type="text" class="form-control" name="location" placeholder="e.g. 一号楼门口">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">房间号</label>
+                        <input type="text" class="form-control" name="room_number" placeholder="e.g. 101">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

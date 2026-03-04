@@ -55,12 +55,69 @@
                 <td style="font-family: monospace; font-size: 12px;">{{ user.nfc_uid or '-' }}</td>
                 <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
                 <td>
-                    <form method="POST" action="{{ url_for('web.delete_user', user_id=user.id) }}" 
-                          onsubmit="return confirm('确定删除此用户吗？')" 
-                          style="display: inline;">
-                        <input type="hidden" name="_method" value="DELETE">
-                        <button type="submit" class="btn btn-sm btn-danger">删除</button>
-                    </form>
+                    <div style="display: inline-flex; gap: 8px;">
+                        <!-- 编辑按钮 -->
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editUserModal{{ user.id }}">
+                            编辑
+                        </button>
+                        <!-- 删除表单 -->
+                        <form method="POST" action="{{ url_for('web.delete_user', user_id=user.id) }}" 
+                              onsubmit="return confirm('确定删除此用户吗？')" 
+                              style="display: inline;">
+                            <input type="hidden" name="action" value="delete">
+                            <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            
+            <!-- 编辑用户模态框 -->
+            <tr style="display: none;">
+                <td colspan="8">
+                    <div class="modal fade" id="editUserModal{{ user.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('web.delete_user', user_id=user.id) }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">编辑用户</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">学号/工号</label>
+                                            <input type="text" class="form-control" value="{{ user.username }}" disabled>
+                                            <small class="text-muted">学号/工号无法修改，创建后固定</small>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">姓名</label>
+                                            <input type="text" class="form-control" name="name" value="{{ user.name or '' }}" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">角色</label>
+                                            <select class="form-select" name="role">
+                                                <option value="student" {% if user.role == 'student' %}selected{% endif %}>学生</option>
+                                                <option value="warden" {% if user.role == 'warden' %}selected{% endif %}>宿管</option>
+                                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>管理员</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">指纹 ID</label>
+                                            <input type="text" class="form-control" name="fingerprint_id" value="{{ user.fingerprint_id or '' }}">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">NFC UID</label>
+                                            <input type="text" class="form-control" name="nfc_uid" value="{{ user.nfc_uid or '' }}">
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <input type="hidden" name="action" value="edit">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                        <button type="submit" class="btn btn-primary">保存</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
                 </td>
             </tr>
             {% else %}
