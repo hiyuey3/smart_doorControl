@@ -152,24 +152,45 @@ Page({
   },
 
   /**
-   * 第二部分：HTTP 快照加载
+   * 第二部分：HTTP 快照加载（通过后端代理）
    */
   
   loadDeviceSnapshot(mac_address) {
     console.log(' 加载设备快照 ');
     
-    // 获取视频服务器地址
-    const videoServer = envConfig.getVideoStreamUrl ? 
-      envConfig.getVideoStreamUrl() : 
-      'http://192.168.0.100:81';  // 默认地址
+    const apiUrl = envConfig.getApiUrl();
+    const token = wx.getStorageSync('token');
+    const mac_clean = mac_address.replace(/:/g, '');
     
-    // 构建快照 URL（添加时间戳避免缓存）
-    const snapshotUrl = `${videoServer}?action=snapshot&t=${Date.now()}`;
-    console.log('快照 URL:', snapshotUrl);
-    
-    this.setData({
-      videoFrame: snapshotUrl,
-      isSnapshotLoading: false
+    // 使用后端代理 API 获取快照（支持权限验证）
+    wx.request({
+      url: `${apiUrl}/device/snapshot/${mac_clean}`,
+      method: 'GET',
+      header: {
+        'Authorization': 'Bearer ' + token
+      },
+      responseType: 'arraybuffer',
+      success: (res) => {
+        if (res.statusCode === 200) {
+          // 将二进制数据转换为 base64 URI
+          const arrayBuffer = res.data;
+          const base64 = wx.arrayBufferToBase64(arrayBuffer);
+          const imageUrl = 'data:image/jpeg;base64,' + base64;
+          
+          this.setData({
+            videoFrame: imageUrl,
+            isSnapshotLoading: false
+          });
+          console.log('快照加载成功');
+        } else {
+          console.error('快照加载失败，HTTP状态码:', res.statusCode);
+          this.setData({ isSnapshotLoading: false });
+        }
+      },
+      fail: (err) => {
+        console.error('快照加载失败:', err);
+        this.setData({ isSnapshotLoading: false });
+      }
     });
   },
 
@@ -369,7 +390,7 @@ Page({
   onVideoError(e) {
     console.error('快照加载失败:', e);
     wx.showToast({
-      title: '快照加载失败，请检查摄像头连接',
+      title: '快照加载失败，请检查设备是否在线',
       icon: 'none',
       duration: 2000
     });
