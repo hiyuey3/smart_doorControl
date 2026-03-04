@@ -464,6 +464,11 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a href="{{ url_for('web.permissions') }}" class="nav-link {% if request.endpoint == 'web.permissions' %}active{% endif %}">
+                        权限审批
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a href="{{ url_for('web.logs') }}" class="nav-link {% if request.endpoint == 'web.logs' %}active{% endif %}">
                         通行日志
                     </a>

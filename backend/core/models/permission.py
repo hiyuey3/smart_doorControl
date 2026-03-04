@@ -1,7 +1,7 @@
 from app import db
 from datetime import datetime
 from typing import Optional
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.orm import mapped_column, Mapped, relationship
 from .mixins import BaseIDMixin, SerializerMixin
 
 
@@ -37,6 +37,16 @@ class UserDevicePermission(BaseIDMixin, SerializerMixin, db.Model):
     # 时间戳
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     """记录创建时间 (旧: db.Column(db.DateTime, default=datetime.utcnow))"""
+    
+    # 关系 (Relationships)
+    user = relationship('User', foreign_keys=[user_id], backref='device_permissions')
+    """申请用户对象"""
+    
+    device = relationship('Device', foreign_keys=[device_mac], backref='user_permissions')
+    """设备对象"""
+    
+    reviewer = relationship('User', foreign_keys=[reviewed_by])
+    """审批人对象"""
     
     __table_args__ = (
         db.UniqueConstraint('user_id', 'device_mac', name='uc_user_device'),

@@ -8,6 +8,12 @@
     <p class="page-subtitle">系统用户信息管理</p>
 </div>
 
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    {{ error }}
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -49,9 +55,12 @@
                 <td style="font-family: monospace; font-size: 12px;">{{ user.nfc_uid or '-' }}</td>
                 <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
                 <td>
-                    <a href="{{ url_for('web.delete_user', user_id=user.id) }}" 
-                       class="btn btn-sm btn-danger" 
-                       onclick="return confirm('确定删除此用户吗？')">删除</a>
+                    <form method="POST" action="{{ url_for('web.delete_user', user_id=user.id) }}" 
+                          onsubmit="return confirm('确定删除此用户吗？')" 
+                          style="display: inline;">
+                        <input type="hidden" name="_method" value="DELETE">
+                        <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                    </form>
                 </td>
             </tr>
             {% else %}

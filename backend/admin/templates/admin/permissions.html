@@ -1,0 +1,147 @@
+{% extends "admin/base.html" %}
+
+{% block title %}权限审批{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 32px;">
+    <h1 class="page-title">权限审批</h1>
+    <p class="page-subtitle">用户设备访问权限审批管理</p>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    {{ error }}
+</div>
+{% endif %}
+
+<!-- 筛选卡片 -->
+<div class="card">
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>筛选条件</span>
+            {% if pending_count > 0 %}
+            <span class="badge badge-warning">待审批 {{ pending_count }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 12px;">
+        <a href="{{ url_for('web.permissions', status='all') }}" 
+           class="btn {% if status_filter == 'all' %}btn-primary{% else %}btn-outline{% endif %}">
+            全部
+        </a>
+        <a href="{{ url_for('web.permissions', status='pending') }}" 
+           class="btn {% if status_filter == 'pending' %}btn-warning{% else %}btn-outline{% endif %}">
+            待审批
+        </a>
+        <a href="{{ url_for('web.permissions', status='approved') }}" 
+           class="btn {% if status_filter == 'approved' %}btn-success{% else %}btn-outline{% endif %}">
+            已批准
+        </a>
+        <a href="{{ url_for('web.permissions', status='rejected') }}" 
+           class="btn {% if status_filter == 'rejected' %}btn-danger{% else %}btn-outline{% endif %}">
+            已拒绝
+        </a>
+    </div>
+</div>
+
+<!-- 审批列表 -->
+<div class="card">
+    <div class="card-header">
+        权限申请列表
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>申请ID</th>
+                <th>申请用户</th>
+                <th>学号/工号</th>
+                <th>申请设备</th>
+                <th>设备位置</th>
+                <th>申请时间</th>
+                <th>状态</th>
+                <th>审批时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for permission in permissions %}
+            <tr>
+                <td>{{ permission.id }}</td>
+                <td>{{ permission.user.name if permission.user else '-' }}</td>
+                <td style="font-family: monospace; font-size: 12px;">
+                    {{ permission.user.username if permission.user else '-' }}
+                </td>
+                <td style="font-family: monospace; font-size: 12px;">{{ permission.device_mac }}</td>
+                <td>{{ permission.device.location if permission.device else '-' }}</td>
+                <td>{{ permission.apply_time.strftime('%Y-%m-%d %H:%M') if permission.apply_time else '-' }}</td>
+                <td>
+                    {% if permission.status == 'pending' %}
+                        <span class="badge badge-warning">待审批</span>
+                    {% elif permission.status == 'approved' %}
+                        <span class="badge badge-success">已批准</span>
+                    {% elif permission.status == 'rejected' %}
+                        <span class="badge badge-danger">已拒绝</span>
+                    {% endif %}
+                </td>
+                <td>{{ permission.review_time.strftime('%Y-%m-%d %H:%M') if permission.review_time else '-' }}</td>
+                <td>
+                    {% if permission.status == 'pending' %}
+                    <div style="display: inline-flex; gap: 8px;">
+                        <!-- 批准表单 -->
+                        <form method="POST" action="{{ url_for('web.update_permission', permission_id=permission.id) }}" 
+                              onsubmit="return confirm('确定批准此权限申请吗？')" 
+                              style="display: inline;">
+                            <input type="hidden" name="action" value="approve">
+                            <button type="submit" class="btn btn-sm btn-success">批准</button>
+                        </form>
+                        <!-- 拒绝表单 -->
+                        <form method="POST" action="{{ url_for('web.update_permission', permission_id=permission.id) }}" 
+                              onsubmit="return confirm('确定拒绝此权限申请吗？')" 
+                              style="display: inline;">
+                            <input type="hidden" name="action" value="reject">
+                            <button type="submit" class="btn btn-sm btn-danger">拒绝</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <span class="text-muted">已处理</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="text-center text-muted">
+                    {% if status_filter == 'pending' %}
+                    暂无待审批的权限申请
+                    {% elif status_filter == 'approved' %}
+                    暂无已批准的权限记录
+                    {% elif status_filter == 'rejected' %}
+                    暂无已拒绝的权限记录
+                    {% else %}
+                    暂无权限申请记录
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+    .btn-outline {
+        background: transparent;
+        border: 1px solid #e2e8f0;
+        color: #64748b;
+    }
+    
+    .btn-outline:hover {
+        background: #f8f9fa;
+        border-color: #1989fa;
+        color: #1989fa;
+    }
+    
+    .text-muted {
+        color: #94a3b8;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
