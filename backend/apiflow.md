@@ -505,6 +505,349 @@ flowchart TD
 
 ---
 
+## ESP32 硬件完整流程
+
+### ESP32 启动流程图
+
+```mermaid
+flowchart TD
+    PowerOn["⚡ 设备上电"] --> SerialInit["串口初始化<br/>ESP32 ↔ STM32<br/>115200 baud"]
+    
+    SerialInit --> NetworkInit["【网络初始化】"]
+    NetworkInit --> CheckWiFi{已保存<br/>WiFi 配置?}
+    
+    CheckWiFi -->|是| ConnectWiFi["WiFi.begin()<br/>连接已保存网络"]
+    CheckWiFi -->|否| SmartConfig["SmartConfig 模式<br/>等待手机配网"]
+    
+    SmartConfig --> WaitConfig["等待配置完成<br/>LED 指示灯闪烁"]
+    WaitConfig --> ConnectWiFi
+    
+    ConnectWiFi --> CheckConnect{连接成功?}
+    CheckConnect -->|否<br/>20s 超时| SmartConfig
+    CheckConnect -->|是| IPAddr["获取 IP 地址<br/>打印到串口"]
+    
+    IPAddr --> NTP["NTP 时间同步<br/>ntp.aliyun.com<br/>pool.ntp.org"]
+    
+    NTP --> MACGen["生成设备标识<br/>MAC 去冒号<br/>26:05:... → 2605..."]
+    
+    MACGen --> TopicGen["生成 MQTT 主题<br/>SUB: /iot/device/{MAC}/down<br/>PUB: /iot/device/{MAC}/up<br/>LWT: /iot/device/{MAC}/status"]
+    
+    TopicGen --> MQTTConfig["配置 MQTT<br/>Server: mqtt.5i03.cn:1883<br/>Client ID: Device_{MAC}"]
+    
+    MQTTConfig --> CreateMQTT["创建 MQTT 任务<br/>FreeRTOS 后台线程<br/>优先级: 1"]
+    
+    CreateMQTT --> CameraInit["【摄像头初始化】"]
+    CameraInit --> ConfigCamera["配置 OV2640<br/>VGA 分辨率<br/>JPEG 格式<br/>Quality: 12"]
+    
+    ConfigCamera --> CameraResult{初始化<br/>成功?}
+    CameraResult -->|否| CameraWarn["⚠️ 警告: 快照功能不可用<br/>继续启动其他服务"]
+    CameraResult -->|是| CameraOK["✅ 摄像头就绪<br/>启用快照上传"]
+    
+    CameraWarn --> HTTPServer
+    CameraOK --> HTTPServer["启动 HTTP 服务器<br/>端口: 81<br/>端点: /stream"]
+    
+    HTTPServer --> SystemReady["✅ 系统就绪<br/>进入主循环"]
+    
+    SystemReady --> MainLoop["【主循环】<br/>loop()"]
+    
+    style PowerOn fill:#e1f5e1
+    style SystemReady fill:#e1f5e1
+    style SmartConfig fill:#fff3cd
+    style CameraWarn fill:#f8d7da
+    style CameraOK fill:#d1ecf1
+```
+
+---
+
+### MQTT 订阅与指令处理流程
+
+```mermaid
+flowchart TD
+    MQTTTask["【MQTT 后台任务】<br/>FreeRTOS 线程"] --> CheckWiFi{WiFi<br/>连接?}
+    
+    CheckWiFi -->|否| Wait1["等待 5 秒<br/>重试"]
+    Wait1 --> MQTTTask
+    
+    CheckWiFi -->|是| CheckMQTT{MQTT<br/>连接?}
+    
+    CheckMQTT -->|否| ConnectMQTT["连接 MQTT Broker"]
+    ConnectMQTT --> SetLWT["设置遗嘱消息<br/>LWT Topic: /iot/device/{MAC}/status<br/>Payload: status=offline"]
+    
+    SetLWT --> ConnectResult{连接<br/>成功?}
+    ConnectResult -->|否| Wait2["等待 5 秒<br/>重试"]
+    Wait2 --> MQTTTask
+    
+    ConnectResult -->|是| PublishOnline["发布在线消息<br/>status=online<br/>ip_address={IP}"]
+    PublishOnline --> Subscribe["订阅指令主题<br/>/iot/device/{MAC}/down"]
+    
+    Subscribe --> MQTTLoop["mqttClient.loop()<br/>处理消息"]
+    
+    CheckMQTT -->|是| MQTTLoop
+    
+    MQTTLoop --> MsgArrived{收到<br/>消息?}
+    MsgArrived -->|否| Delay["延迟 50ms"]
+    Delay --> MQTTTask
+    
+    MsgArrived -->|是| ParseJSON["解析 JSON<br/>提取 cmd 字段"]
+    
+    ParseJSON --> RouterCmd{cmd<br/>类型?}
+    
+    RouterCmd -->|open_door| CMD1["UART 发送:<br/>AA 55 01 01 01 XX"]
+    RouterCmd -->|alarm| CMD2["UART 发送:<br/>AA 55 04 01 01 XX"]
+    RouterCmd -->|query_status| CMD3["UART 发送:<br/>AA 55 05 01 00 XX"]
+    RouterCmd -->|reboot| CMD4["ESP.restart()<br/>重启设备"]
+    RouterCmd -->|led_control| CMD5["digitalWrite(LED)<br/>测试 LED"]
+    RouterCmd -->|其他| CMDUnknown["忽略未知指令"]
+    
+    CMD1 --> UARTSent["✅ 指令已发送<br/>等待 STM32 执行"]
+    CMD2 --> UARTSent
+    CMD3 --> UARTSent
+    CMDUnknown --> Delay
+    
+    CMD4 --> Reboot["🔄 设备重启中..."]
+    CMD5 --> TestOK["📡 测试指令执行"]
+    TestOK --> Delay
+    
+    UARTSent --> Delay
+    
+    style MQTTTask fill:#d1ecf1
+    style UARTSent fill:#e1f5e1
+    style Reboot fill:#f8d7da
+    style CMDUnknown fill:#fff3cd
+```
+
+---
+
+### UART 通信双向流程
+
+```mermaid
+sequenceDiagram
+    participant Backend as Flask 后端
+    participant MQTT as MQTT Broker
+    participant ESP32 as ESP32-S3
+    participant STM32 as STM32 锁控板
+    participant Hardware as 硬件（继电器/传感器）
+    
+    Note over Backend,Hardware: 场景1: 远程开锁（后端 → 硬件）
+    Backend->>MQTT: PUBLISH /iot/device/MAC/down<br/>{cmd: "open_door"}
+    MQTT->>ESP32: 推送 MQTT 消息
+    ESP32->>ESP32: JSON 解析<br/>提取 cmd 字段
+    ESP32->>STM32: UART TX:<br/>AA 55 01 01 01 04
+    STM32->>Hardware: GPIO 驱动继电器<br/>打开门锁 3 秒
+    Hardware-->>STM32: 门锁状态反馈
+    STM32->>ESP32: UART RX:<br/>AA 55 81 01 01 84
+    ESP32->>ESP32: 校验和验证<br/>解析状态码
+    ESPN32->>MQTT: PUBLISH /iot/device/MAC/up<br/>{type: "hw_report", cmd: 0x81, data: 0x01}
+    MQTT->>Backend: 推送硬件上报
+    Backend->>Backend: MQTT 回调<br/>记录 AccessLog
+    
+    Note over Backend,Hardware: 场景2: 指纹识别（硬件 → 后端）
+    Hardware->>STM32: 指纹传感器验证通过
+    STM32->>ESP32: UART TX:<br/>AA 55 02 01 XX YY
+    ESP32->>ESP32: 解析指纹 ID
+    ESP32->>MQTT: PUBLISH /iot/device/MAC/up<br/>{type: "hw_report", cmd: 0x02, data: fingerprint_id}
+    MQTT->>Backend: 推送指纹事件
+    Backend->>Backend: 验证指纹 ID<br/>查询用户权限<br/>记录 AccessLog
+    Backend->>MQTT: PUBLISH /iot/device/MAC/down<br/>{cmd: "open_door"} (if authorized)
+    MQTT->>ESP32: 推送开锁指令
+    ESP32->>STM32: UART TX: 开锁
+    STM32->>Hardware: 执行开锁
+```
+
+---
+
+### 快照上传机制（HTTP 推送模式）
+
+```mermaid
+flowchart TD
+    MainLoop["主循环 loop()"] --> PollUpload["poll_frame_upload()"]
+    
+    PollUpload --> Check1{摄像头<br/>已初始化?}
+    Check1 -->|否| Skip1["跳过上传"]
+    
+    Check1 -->|是| Check2{WiFi<br/>连接?}
+    Check2 -->|否| Skip1
+    
+    Check2 -->|是| Check3{有本地<br/>流观看者?}
+    Check3 -->|是| Skip1["避免帧缓冲冲突<br/>暂停云端上传"]
+    
+    Check3 -->|否| CheckInterval{距上次<br/>上传 >1s?}
+    CheckInterval -->|否| Skip1
+    
+    CheckInterval -->|是| CaptureFrame["esp_camera_fb_get()<br/>获取 JPEG 帧"]
+    
+    CaptureFrame --> FrameOK{获取<br/>成功?}
+    FrameOK -->|否| Error1["❌ 帧获取失败<br/>释放资源"]
+    Error1 --> Skip1
+    
+    FrameOK -->|是| PrepareHTTP["准备 HTTP 请求"]
+    PrepareHTTP --> SetHeaders["设置请求头:<br/>Content-Type: image/jpeg<br/>X-Device-MAC: {MAC}<br/>X-Device-Secret: {SECRET}"]
+    
+    SetHeaders --> HTTPPost["POST http://backend/api<br/>/device/upload_snapshot<br/>Body: JPEG 二进制"]
+    
+    HTTPPost --> HTTPResult{HTTP<br/>状态?}
+    
+    HTTPResult -->|200| Success["✅ 上传成功<br/>total_uploads++<br/>consecutive_failures = 0"]
+    HTTPResult -->|4xx/5xx| HTTPError["⚠️ HTTP 错误<br/>consecutive_failures++"]
+    HTTPResult -->|timeout| NetError["❌ 网络错误<br/>consecutive_failures++"]
+    
+    Success --> Release["释放帧缓冲<br/>esp_camera_fb_return()"]
+    HTTPError --> Release
+    NetError --> Release
+    
+    Release --> UpdateTime["更新上传时间戳"]
+    UpdateTime --> Diagnose{每 30s<br/>诊断?}
+    
+    Diagnose -->|是| PrintDiag["打印诊断信息:<br/>- WiFi 信号强度<br/>- DNS 解析结果<br/>- 上传统计<br/>- 失败计数"]
+    Diagnose -->|否| Skip1
+    
+    PrintDiag --> Skip1
+    Skip1 --> NextCycle["继续主循环"]
+    
+    style Success fill:#e1f5e1
+    style CaptureFrame fill:#d1ecf1
+    style HTTPError fill:#fff3cd
+    style NetError fill:#f8d7da
+```
+
+---
+
+### 本地流服务（HTTP Server 端口 81）
+
+```mermaid
+flowchart TD
+    ClientReq["客户端请求<br/>GET http://device_ip:81/stream"] --> HTTPServer["ESP32 HTTP 服务器<br/>stream_handler()"]
+    
+    HTTPServer --> ParseQuery["解析 URL 参数"]
+    ParseQuery --> CheckAction{action<br/>参数?}
+    
+    CheckAction -->|snapshot| SingleMode["【单张快照模式】"]
+    CheckAction -->|无参数| StreamMode["【MJPEG 流模式】"]
+    
+    SingleMode --> Capture1["esp_camera_fb_get()<br/>获取一帧"]
+    Capture1 --> SetHeader1["设置响应头:<br/>Content-Type: image/jpeg<br/>Content-Disposition: inline"]
+    SetHeader1 --> Send1["httpd_resp_send()<br/>发送 JPEG 数据"]
+    Send1 --> Release1["释放帧缓冲"]
+    Release1 --> End1["✅ 单张快照完成"]
+    
+    StreamMode --> SetHeader2["设置流响应头:<br/>Content-Type:<br/>multipart/x-mixed-replace"]
+    SetHeader2 --> StreamLoop["【流循环】"]
+    
+    StreamLoop --> CheckConn{客户端<br/>连接?}
+    CheckConn -->|断开| StopStream["停止流传输"]
+    
+    CheckConn -->|连接| Capture2["获取最新帧<br/>CAMERA_GRAB_LATEST"]
+    Capture2 --> FrameCheck{帧有效?}
+    FrameCheck -->|否| FrameError["跳过此帧"]
+    FrameError --> StreamLoop
+    
+    FrameCheck -->|是| SendHeader["发送帧头:<br/>Content-Type: image/jpeg<br/>Content-Length: {size}"]
+    SendHeader --> SendData["httpd_resp_send_chunk()<br/>发送 JPEG 数据"]
+    SendData --> SendBoundary["发送分隔符:<br/>\\r\\n--frame\\r\\n"]
+    SendBoundary --> ReleaseFrame["释放当前帧"]
+    ReleaseFrame --> Delay10ms["delay(10ms)<br/>控制帧率"]
+    Delay10ms --> StreamLoop
+    
+    StopStream --> End2["✅ 流传输结束"]
+    
+    style End1 fill:#e1f5e1
+    style End2 fill:#e1f5e1
+    style StreamLoop fill:#d1ecf1
+    style FrameError fill:#fff3cd
+```
+
+---
+
+### 心跳机制流程
+
+```mermaid
+flowchart TD
+    MainLoop["主循环 loop()"] --> CheckTimer{距上次<br/>心跳 >15s?}
+    
+    CheckTimer -->|否| Continue["继续其他任务"]
+    
+    CheckTimer -->|是| CheckMQTT{MQTT<br/>已连接?}
+    CheckMQTT -->|否| Skip["跳过心跳"]
+    
+    CheckMQTT -->|是| BuildPayload["构建心跳消息"]
+    BuildPayload --> AddFields["添加字段:<br/>- type: heartbeat<br/>- uptime: {运行秒数}<br/>- count: {心跳计数}<br/>- ip_address: {IP}<br/>- timestamp: {UTC 时间}"]
+    
+    AddFields --> CheckTime{时间<br/>已同步?}
+    CheckTime -->|否| SkipTimestamp["跳过 timestamp"]
+    CheckTime -->|是| AddTimestamp["添加 UTC 时间戳<br/>YYYY-MM-DDTHH:MM:SSZ"]
+    
+    SkipTimestamp --> SerializeJSON
+    AddTimestamp --> SerializeJSON["JSON 序列化"]
+    
+    SerializeJSON --> Publish["MQTT PUBLISH<br/>/iot/device/{MAC}/up"]
+    
+    Publish --> UpdateTimer["更新心跳时间戳<br/>heartbeat_count++"]
+    
+    UpdateTimer --> Skip
+    Skip --> Continue
+    Continue --> NextLoop["下一次循环迭代"]
+    
+    style Publish fill:#d1ecf1
+    style NextLoop fill:#e1f5e1
+```
+
+---
+
+### ESP32 完整数据流架构图
+
+```mermaid
+graph TB
+    ESP32["【ESP32-S3】<br/>主控芯片"]
+    
+    subgraph 网络层
+        WiFi["WiFi 客户端<br/>STA 模式"]
+        MQTT["MQTT 客户端<br/>订阅/发布"]
+        HTTP["HTTP 服务器<br/>端口 81"]
+        HTTPClient["HTTP 客户端<br/>快照上传"]
+    end
+    
+    subgraph 硬件层
+        Camera["OV2640 摄像头<br/>VGA JPEG"]
+        UART["硬件串口<br/>RX21 TX4"]
+        LED["LED 指示灯<br/>GPIO 2"]
+    end
+    
+    subgraph 外部设备
+        STM32["STM32 锁控板<br/>继电器/传感器驱动"]
+        Backend["Flask 后端<br/>API 服务器"]
+        Broker["MQTT Broker<br/>mqtt.5i03.cn"]
+        Client["小程序/浏览器<br/>查看快照"]
+    end
+    
+    ESP32 --> WiFi
+    WiFi --> MQTT
+    WiFi --> HTTP
+    WiFi --> HTTPClient
+    
+    ESP32 --> Camera
+    ESP32 --> UART
+    ESP32 --> LED
+    
+    MQTT <-->|订阅指令<br/>发布状态| Broker
+    Broker <-->|转发| Backend
+    
+    HTTP <-->|MJPEG 流<br/>单张快照| Client
+    
+    HTTPClient -->|POST 上传<br/>快照帧| Backend
+    
+    UART <-->|串口协议<br/>AA 55 ...| STM32
+    
+    Camera -->|esp_camera_fb_get| ESP32
+    STM32 -->|硬件事件| UART
+    
+    style ESP32 fill:#d1ecf1
+    style Backend fill:#e1f5e1
+    style Broker fill:#f5f5f5
+    style Camera fill:#fff3cd
+```
+
+---
+
 ## 快速参考：API 调用链路
 
 | 场景 | 路由 | 核心逻辑 | 状态码 |
