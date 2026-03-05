@@ -177,7 +177,7 @@ Page({
     console.log('[Snapshot] 加载策略：优先使用本地源');
     
     if (hasLocalIP) {
-      // ✅ 优先级1：尝试本地 ESP32 直连（超时3秒快速失败）
+      // 优先级1：尝试本地 ESP32 直连（超时3秒快速失败）
       this.loadFromLocalESP32(device.ip_address, mac_address);
     } else {
       // 没有本地IP，直接跳到后端代理
@@ -199,7 +199,7 @@ Page({
       timeout: 3000,  // ⚡ 本地源使用短超时（3秒），快速失败
       success: (res) => {
         if (res.statusCode === 200) {
-          console.log('[Snapshot] ✅ 成功从本地 ESP32 获取快照');
+          console.log('[Snapshot]  成功从本地 ESP32 获取快照');
           const arrayBuffer = res.data;
           const base64 = wx.arrayBufferToBase64(arrayBuffer);
           const cleanBase64 = base64.replace(/[\r\n]/g, "");
@@ -239,7 +239,7 @@ Page({
       timeout: 8000,  // 后端代理使用较长超时（8秒）
       success: (res) => {
         if (res.statusCode === 200) {
-          console.log('[Snapshot] ✅ 成功从后端代理获取快照');
+          console.log('[Snapshot]  成功从后端代理获取快照');
           
           try {
             const jsonData = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
@@ -250,7 +250,7 @@ Page({
               return;
             }
             
-            // ✅ 关键修复：强制清理所有可能存在的换行符
+            //关键修复：强制清理所有可能存在的换行符
             let rawBase64 = jsonData.data.image_base64;
             let cleanBase64 = rawBase64.replace(/[\r\n]/g, "");
             

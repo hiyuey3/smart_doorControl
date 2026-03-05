@@ -244,11 +244,11 @@ Page({
         console.log(' 微信绑定响应 ', res);
 
         if (res.statusCode === 200 && res.data && res.data.success) {
-          // ✅ 绑定成功
+          //  绑定成功
           // 关键修复：安全访问响应数据 res.data.data
           // 原因：防止后端响应格式异常导致 undefined 错误
           // 修复前：const openid = res.data.data.openid  ❌ (若data不存在则报错)
-          // 修复后：const responseData = res.data.data || {}  ✅ (安全访问)
+          // 修复后：const responseData = res.data.data || {}   (安全访问)
           const responseData = res.data.data || {};
           
           // 更新UI状态，反映微信绑定状态

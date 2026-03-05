@@ -55,11 +55,11 @@
                 <td>
                     <div style="display: inline-flex; gap: 8px;">
                         <!-- 编辑按钮 -->
-                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editDeviceModal{{ device.id }}">
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editDeviceModal{{ device.mac_address | replace(':', '') }}">
                             编辑
                         </button>
                         <!-- 删除表单 -->
-                        <form method="POST" action="{{ url_for('web.manage_device', device_id=device.id) }}" 
+                        <form method="POST" action="{{ url_for('web.manage_device', mac_address=device.mac_address) }}" 
                               onsubmit="return confirm('确定删除此设备吗？')" 
                               style="display: inline;">
                             <input type="hidden" name="action" value="delete">
@@ -71,10 +71,10 @@
             <!-- 编辑设备模态框 -->
             <tr style="display: none;">
                 <td colspan="8">
-                    <div class="modal fade" id="editDeviceModal{{ device.id }}" tabindex="-1">
+                    <div class="modal fade" id="editDeviceModal{{ device.mac_address | replace(':', '') }}" tabindex="-1">
                         <div class="modal-dialog">
                             <div class="modal-content">
-                                <form method="POST" action="{{ url_for('web.manage_device', device_id=device.id) }}">
+                                <form method="POST" action="{{ url_for('web.manage_device', mac_address=device.mac_address) }}">
                                     <div class="modal-header">
                                         <h5 class="modal-title">编辑设备</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

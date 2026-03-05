@@ -192,11 +192,11 @@ def add_device():
     return redirect(url_for('web.devices'))
 
 
-@web_bp.route('/devices/<int:device_id>', methods=['POST'])
+@web_bp.route('/devices/<string:mac_address>', methods=['POST'])
 @login_required
-def manage_device(device_id):
+def manage_device(mac_address):
     """管理设备（编辑或删除）"""
-    device = Device.query.get_or_404(device_id)
+    device = Device.query.get_or_404(mac_address)
     action = request.form.get('action')  # 'edit' 或 'delete'
     
     try:
