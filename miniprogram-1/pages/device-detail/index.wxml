@@ -13,20 +13,20 @@
   <!-- 沉浸式监控区 (Header 40%) -->
   <view class="monitor-section">
     <!-- 视频流容器 -->
-    <view class="video-container">
+    <!-- <view class="video-container"> -->
       <!-- HTTP 快照流（后端自动返回实时快照或占位符） -->
-      <image 
+      <!-- <image 
         class="video-feed" 
         src="{{videoFrame}}" 
         mode="aspectFill"
         bindload="onVideoLoad"
         binderror="onVideoError"
-      ></image>
+      ></image> -->
 
       <!-- 离线遮罩 -->
-      <view class="offline-mask" wx:if="{{device.status !== 'online'}}">
-        <text class="offline-text">设备离线</text>
-      </view>
+      <!-- <view class="offline-mask" wx:if="{{device.status !== 'online'}}"> -->
+        <!-- <text class="offline-text">设备离线</text> -->
+      <!-- </view> -->
 
       <!-- 视频区域右下角 - 快照源切换信息 -->
       <view class="snapshot-source-info">

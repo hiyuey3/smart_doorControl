@@ -35,26 +35,7 @@
       </view>
 
       <!-- 卡片中间：视频流区域 -->
-      <view class="card-video {{device.status === 'offline' ? 'video-offline' : ''}}">
-        <!-- 设备在线时显示视频流 -->
-        <image 
-          wx:if="{{device.status === 'online'}}"
-          class="video-stream" 
-          src="{{videoStreamUrl}}" 
-          mode="aspectFill"
-          alt="设备视频流"
-        ></image>
-        
-        <!-- 设备离线时显示占位符 -->
-        <view wx:else class="video-placeholder">
-          <text class="placeholder-text">设备已离线</text>
-        </view>
-        
-        <!-- 离线遮罩：半透明灰色覆盖层（仅在设备离线时显示） -->
-        <view class="offline-overlay" wx:if="{{device.status === 'offline'}}">
-          <text class="offline-text">无法访问</text>
-        </view>
-      </view>
+
 
       <!-- 卡片底部：操作按钮 -->
       <view class="card-footer" catchtap="stopPropagation">
