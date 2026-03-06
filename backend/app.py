@@ -108,7 +108,7 @@ def create_app():
     # 优先级3：本地ESP32直连地址（仅用于开发调试）
     app.config['DEVICE_STREAM_URL_TEMPLATE'] = os.getenv(
         'DEVICE_STREAM_URL',
-        'http://192.168.3.161:81/stream'  # 本地ESP32视频流地址（降级方案）
+        'http://esp32.lan:81/stream'  # 本地ESP32视频流地址（降级方案）
     )
     
     # 云端中继视频快照地址（推荐配置此项以替代本地ESP32）
@@ -121,7 +121,7 @@ def create_app():
     # 快照URL模板（作为降级方案，仅在云端中继不可用时使用）
     app.config['DEVICE_SNAPSHOT_URL_TEMPLATE'] = os.getenv(
         'DEVICE_SNAPSHOT_URL',
-        'http://192.168.3.161:81/stream?action=snapshot'  # 本地ESP32快照地址
+        'http://esp32.lan:81/stream?action=snapshot'  # 本地ESP32快照地址
     )
     
     # 小程序前端使用的快照访问地址
