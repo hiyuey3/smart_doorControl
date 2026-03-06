@@ -157,7 +157,7 @@ Page({
   /**
    * 第二部分：实时快照加载（优先级策略）
    * 
-   * V3.2 新特性：本地优先策略
+   * 📌 V3.2 新特性：本地优先策略
    * 优先级1（首选）：本地 ESP32 直连（http://local_ip:81/stream?action=snapshot）
    *   - 优点：无网络延迟，实时性最好
    *   - 缺点：依赖本地网络环境
@@ -196,10 +196,10 @@ Page({
       method: 'GET',
       header: {},
       responseType: 'arraybuffer',
-      timeout: 3000,  // 本地源使用短超时（3秒），快速失败
+      timeout: 3000,  // ⚡ 本地源使用短超时（3秒），快速失败
       success: (res) => {
         if (res.statusCode === 200) {
-          console.log('[Snapshot] 成功从本地 ESP32 获取快照');
+          console.log('[Snapshot]  成功从本地 ESP32 获取快照');
           const arrayBuffer = res.data;
           const base64 = wx.arrayBufferToBase64(arrayBuffer);
           const cleanBase64 = base64.replace(/[\r\n]/g, "");
@@ -210,12 +210,12 @@ Page({
             snapshotSource: 'local'
           });
         } else {
-          console.warn(`[Snapshot] 本地源返回异常状态 ${res.statusCode}，降级到后端`);
+          console.warn(`[Snapshot] ⚠️ 本地源返回异常状态 ${res.statusCode}，降级到后端`);
           this.loadFromBackendProxy(mac_address);
         }
       },
       fail: (err) => {
-        console.warn(`[Snapshot] 本地源连接失败 (${err.errMsg})，降级到后端代理`);
+        console.warn(`[Snapshot] ⚠️ 本地源连接失败 (${err.errMsg})，降级到后端代理`);
         this.loadFromBackendProxy(mac_address);
       }
     });
@@ -239,7 +239,7 @@ Page({
       timeout: 8000,  // 后端代理使用较长超时（8秒）
       success: (res) => {
         if (res.statusCode === 200) {
-          console.log('[Snapshot] 成功从后端代理获取快照');
+          console.log('[Snapshot]  成功从后端代理获取快照');
           
           try {
             const jsonData = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
@@ -250,7 +250,7 @@ Page({
               return;
             }
             
-            // 关键修复：强制清理所有可能存在的换行符
+            //关键修复：强制清理所有可能存在的换行符
             let rawBase64 = jsonData.data.image_base64;
             let cleanBase64 = rawBase64.replace(/[\r\n]/g, "");
             
@@ -268,12 +268,12 @@ Page({
             this.loadFromPlaceholder('数据格式错误');
           }
         } else {
-          console.warn(`[Snapshot] 后端代理返回异常 ${res.statusCode}，显示离线提示`);
+          console.warn(`[Snapshot] ❌ 后端代理返回异常 ${res.statusCode}，显示离线提示`);
           this.loadFromPlaceholder(`服务异常 (${res.statusCode})`);
         }
       },
       fail: (err) => {
-        console.error(`[Snapshot] 后端代理连接失败 (${err.errMsg})，显示离线提示`);
+        console.error(`[Snapshot] ❌ 后端代理连接失败 (${err.errMsg})，显示离线提示`);
         this.loadFromPlaceholder('网络不可用');
       }
     });

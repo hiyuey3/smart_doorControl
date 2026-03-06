@@ -68,3 +68,4 @@ instance/*.db.backup_*
 *.tar.gz
 *.zip
 *.h5
+backend/startupmermaid.md

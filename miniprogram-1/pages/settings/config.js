@@ -241,14 +241,14 @@ Page({
       },
       success: (res) => {
         wx.hideLoading();
-        console.log('微信绑定响应', res);
+        console.log(' 微信绑定响应 ', res);
 
         if (res.statusCode === 200 && res.data && res.data.success) {
-          // 绑定成功
+          //  绑定成功
           // 关键修复：安全访问响应数据 res.data.data
           // 原因：防止后端响应格式异常导致 undefined 错误
-          // 修复前：const openid = res.data.data.openid  (若data不存在则报错)
-          // 修复后：const responseData = res.data.data || {}  (安全访问)
+          // 修复前：const openid = res.data.data.openid  ❌ (若data不存在则报错)
+          // 修复后：const responseData = res.data.data || {}   (安全访问)
           const responseData = res.data.data || {};
           
           // 更新UI状态，反映微信绑定状态
@@ -268,14 +268,14 @@ Page({
             duration: 1500
           });
         } else if (res.statusCode === 400) {
-          // 客户端错误（如：已经绑定过微信）
+          // ❌ 客户端错误（如：已经绑定过微信）
           wx.showToast({
             title: res.data?.message || '已绑定微信',
             icon: 'none',
             duration: 1500
           });
         } else if (res.statusCode === 401) {
-          // 认证失败（token过期）
+          // ❌ 认证失败（token过期）
           wx.removeStorageSync('token');
           wx.showToast({
             title: '登录已过期',
@@ -288,7 +288,7 @@ Page({
             });
           }, 1500);
         } else {
-          // 其他错误（5xx服务器错误等）
+          // ❌ 其他错误（5xx服务器错误等）
           wx.showToast({
             title: res.data?.message || '绑定失败',
             icon: 'none',
@@ -297,9 +297,9 @@ Page({
         }
       },
       fail: (err) => {
-        // 网络错误（无法连接到后端）
+        // ❌ 网络错误（无法连接到后端）
         wx.hideLoading();
-        console.error('绑定网络错误', err);
+        console.error(' 绑定网络错误 ', err);
         wx.showToast({
           title: '网络错误',
           icon: 'none',
