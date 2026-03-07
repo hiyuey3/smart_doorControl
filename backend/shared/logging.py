@@ -14,19 +14,19 @@ class LogHelper:
                          success=True, failure_reason=None, image_path=None):
         """创建访问日志
         
-        注意：Log 模型不存储 success/failure_reason，这些信息已在业务逻辑中处理
-        仅记录实际发生的事件（即所有记录的都是已成功处理的事件）
+        Log 模型不保存 success/failure_reason。
+        这两个参数保留是为了兼容旧调用方。
         """
         # 生成事件ID
         event_id = f"{unlock_method}_{int(time.time())}_{mac_address.replace(':', '')}"
         
-        # Log 模型只有这些字段：event_id, mac_address, user_id, unlock_method, snapshot_url, create_time
+        # 仅写入 Log 模型实际存在的字段
         log_entry = Log(
             event_id=event_id,
             mac_address=mac_address,
             user_id=user_id,
             unlock_method=unlock_method,
-            snapshot_url=image_path  # 如果有图片路径，保存到 snapshot_url
+            snapshot_url=image_path
         )
         
         return db_helper.add_and_commit(log_entry)
@@ -68,7 +68,7 @@ class LogHelper:
             image_path: 抓拍图片路径
             
         Returns:
-            tuple: (log_instance, error)
+            元组： (log_instance, error)
         """
         return LogHelper.create_access_log(
             mac_address=mac_address,
@@ -93,7 +93,7 @@ class LogHelper:
             image_path: 抓拍图片路径
             
         Returns:
-            tuple: (log_instance, error)
+            元组： (log_instance, error)
         """
         return LogHelper.create_access_log(
             mac_address=mac_address,

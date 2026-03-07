@@ -10,42 +10,6 @@
     </view>
   </view>
 
-  <!-- 沉浸式监控区 (Header 40%) -->
-  <view class="monitor-section">
-    <!-- 视频流容器 -->
-    <!-- <view class="video-container"> -->
-      <!-- HTTP 快照流（后端自动返回实时快照或占位符） -->
-      <!-- <image 
-        class="video-feed" 
-        src="{{videoFrame}}" 
-        mode="aspectFill"
-        bindload="onVideoLoad"
-        binderror="onVideoError"
-      ></image> -->
-
-      <!-- 离线遮罩 -->
-      <!-- <view class="offline-mask" wx:if="{{device.status !== 'online'}}"> -->
-        <!-- <text class="offline-text">设备离线</text> -->
-      <!-- </view> -->
-
-      <!-- 视频区域右下角 - 快照源切换信息 -->
-      <view class="snapshot-source-info">
-        <text class="source-label">源: {{snapshotSource === 'local' ? '本地' : '代理'}}</text>
-      </view>
-
-      <!-- 视频区域右下角 - 刷新快照悬浮按钮 + 切换源按钮 -->
-      <view class="video-control-buttons">
-        <!-- 切换源按钮 -->
-        <view class="video-btn source-toggle-btn" bindtap="toggleSnapshotSource" wx:if="{{device.ip_address}}">
-          <text class="btn-icon">源</text>
-        </view>
-        <!-- 刷新按钮 -->
-        <view class="video-refresh-btn" bindtap="handleStreamRefresh" style="opacity: {{isSnapshotLoading ? 0.6 : 1}};">
-          <text class="refresh-icon">刷新</text>
-        </view>
-      </view>
-    </view>
-  </view>
 
   <!-- 多维控制面板 (Grid 布局) -->
   <view class="control-panel">
@@ -60,7 +24,7 @@
       >
         <text class="control-label">开锁</text>
         <view class="control-status {{actionStates.open_door}}" wx:if="{{actionStates.open_door}}">
-          {{actionStates.open_door === 'loading' ? '执行中...' : '✓'}}
+          {{actionStates.open_door === 'loading' ? '执行中...' : '完成'}}
         </view>
       </view>
 
@@ -73,7 +37,7 @@
       >
         <text class="control-label">锁定</text>
         <view class="control-status {{actionStates.keep_open}}" wx:if="{{actionStates.keep_open}}">
-          {{actionStates.keep_open === 'loading' ? '执行中...' : '✓'}}
+          {{actionStates.keep_open === 'loading' ? '执行中...' : '完成'}}
         </view>
       </view>
 
@@ -85,7 +49,7 @@
       >
         <text class="control-label">警报</text>
         <view class="control-status {{actionStates.alarm}}" wx:if="{{actionStates.alarm}}">
-          {{actionStates.alarm === 'loading' ? '执行中...' : '✓'}}
+          {{actionStates.alarm === 'loading' ? '执行中...' : '完成'}}
         </view>
       </view>
 
@@ -98,7 +62,7 @@
       >
         <text class="control-label">补光灯</text>
         <view class="control-status {{actionStates.light}}" wx:if="{{actionStates.light}}">
-          {{actionStates.light === 'loading' ? '执行中...' : '✓'}}
+          {{actionStates.light === 'loading' ? '执行中...' : '完成'}}
         </view>
       </view>
 
@@ -118,7 +82,7 @@
       >
         <text class="control-label">重启</text>
         <view class="control-status {{actionStates.reboot}}" wx:if="{{actionStates.reboot}}">
-          {{actionStates.reboot === 'loading' ? '执行中...' : '✓'}}
+          {{actionStates.reboot === 'loading' ? '执行中...' : '完成'}}
         </view>
       </view>
     </view>

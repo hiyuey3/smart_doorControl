@@ -3,8 +3,6 @@
     "pages/login/index",
     "pages/console/index",
     "pages/device-detail/index",
-    "pages/logs/index",
-    "pages/users/manage",
     "pages/settings/config"
   ],
   "window": {

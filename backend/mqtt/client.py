@@ -72,18 +72,18 @@ def _handle_message_impl(client, userdata, message):
         payload = json.loads(message.payload.decode('utf-8'))
         print(f"Received MQTT message on {topic}: {payload}")
 
-        # 解析MAC地址
+        # 从 topic 提取设备 MAC
         mac_address = None
 
-        # 格式1: /iot/device/{mac}/up
+        # 新主题格式：/iot/device/{mac}/up 或 /iot/device/{mac}/status
         if topic.startswith('/iot/device/'):
             parts = topic.split('/')
             if len(parts) >= 4:
-                mac_no_colon = parts[3]  # 获取无冒号的MAC，如 AABBCCDDEEFF
-                # 转换为标准格式：AA:BB:CC:DD:EE:FF
+                mac_no_colon = parts[3]  # 例如 AABBCCDDEEFF
+                # 统一转成 AA:BB:CC:DD:EE:FF
                 mac_address = ':'.join([mac_no_colon[i:i+2] for i in range(0, 12, 2)]).upper()
 
-        # 格式3: access/control/event/{mac}
+        # 兼容旧主题格式：access/control/event/{mac}
         elif topic.startswith('access/control/event/'):
             parts = topic.split('/')
             if len(parts) >= 4:
@@ -95,7 +95,7 @@ def _handle_message_impl(client, userdata, message):
 
         print(f"Extracted MAC address: {mac_address}")
 
-        # 从设备上报中提取IP地址（支持多种字段）
+        # 设备上报里可能使用不同字段名，逐个兜底读取
         reported_ip = (
             payload.get('ip_address')
             or payload.get('ip')
@@ -103,7 +103,7 @@ def _handle_message_impl(client, userdata, message):
             or (payload.get('network') or {}).get('ip')
         )
 
-        # 处理设备状态消息 (掉电/离线)
+        # 状态主题主要处理离线通知（含 LWT）
         if '/status' in topic:
             device_status = payload.get('status', 'unknown')
             if device_status == 'offline':
@@ -115,19 +115,18 @@ def _handle_message_impl(client, userdata, message):
                     print(f"[MQTT] OK: Device {mac_address} marked as offline from LWT or status message")
             return
 
-        # 获取或查询设备（更新在线状态时需要）
+        # 更新设备在线状态
         device = Device.query.filter_by(mac_address=mac_address).first()
         if not device:
             print(f"Device not found: {mac_address}, skipping status update")
         else:
-            # 检查设备是否从离线变为在线
+            # 判断是否离线恢复
             was_offline = device.status != 'online'
-            # 更新设备在线状态
             device.status = 'online'
             device.last_heartbeat = datetime.utcnow()
             if reported_ip:
                 device.ip_address = reported_ip
-            # 如果设备刚上线，发布 retained online 消息覆盖 LWT
+            # 设备刚上线时，用 retained online 覆盖 broker 里的离线状态
             if was_offline:
                 publish_device_status(mac_address, 'online', retain=True)
                 print(f"[MQTT] Published retained 'online' status for {mac_address}")
@@ -206,9 +205,9 @@ def handle_message(client, userdata, message):
 def publish_command(mac_address, command):
     """
     发布控制命令到设备
-    
-    注意：ESP32订阅的topic格式为 /iot/device/{mac}/down
-    其中MAC地址需要去掉冒号，如 AABBCCDDEEFF
+
+    ESP32 订阅主题为 /iot/device/{mac}/down，
+    所以这里会把 MAC 转成无分隔符格式（如 AABBCCDDEEFF）。
     """
     try:
         # 移除MAC地址中的冒号和连字符，统一为大写
@@ -257,10 +256,10 @@ def publish_device_status(mac_address, status, retain=True):
         status: 状态字符串（'online' 或 'offline'）
         retain: 是否为 retained 消息（默认 True）
     
-    用途：
-        - 设备上线时发布 retained "online" 消息覆盖 LWT
-        - 设备正常断开时发布 retained "offline" 消息
-        - retained 消息会被 broker 保存，新订阅者立即收到最新状态
+    说明：
+        - 设备上线时发布 retained "online" 覆盖 LWT
+        - 设备断开时发布 retained "offline"
+        - broker 会保存 retained 消息，后续订阅者可立即拿到最新状态
     """
     try:
         # 移除 MAC 地址中的冒号，转换为 ESP32 格式

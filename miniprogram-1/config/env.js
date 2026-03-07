@@ -1,21 +1,16 @@
 /**
- * 环境和配置管理系统
- * 
- * 工作流程:
- * 1. 应用启动时调用 initConfig() 从服务器获取完整配置
- * 2. 配置存储在内存和本地缓存中
- * 3. 所有模块通过这里获取配置
- * 4. 支持手动刷新配置
+ * 环境与配置管理。
+ * 启动时先拉取服务端配置；失败时回退本地缓存或默认值。
  */
 
-// 本地默认配置（当无法从服务器获取时使用）
-const CONFIG_VERSION = '1.1.0';  // 配置版本号，用于清除旧缓存
+// 本地默认配置（服务端不可用时回退）
+const CONFIG_VERSION = '1.1.0';  // 用于控制缓存失效
 
 const DEFAULT_LOCAL_CONFIG = {
   version: CONFIG_VERSION,
   // API 配置
   api: {
-    // 初始 API 地址（用于首次获取完整配置）
+    // 启动阶段用于获取远端配置
     baseUrl: 'https://dev.api.5i03.cn/api',
     timeout: 10000,
     debug: true,
@@ -41,11 +36,11 @@ const DEFAULT_LOCAL_CONFIG = {
   // 第三方服务
   servers: {
     // 快照获取方式：
-    // 方式1（推荐生产环境）：直接配置云端中继 URL，绕过后端代理以提升性能
+    // 方式1（生产常用）：直连云端中继 URL
     //   video_stream: 'https://relay.example.com/snapshot'
-    // 方式2（当前配置）：通过后端 API 代理获取快照，支持权限检查和缓存
+    // 方式2（当前）：通过后端 API 代理，便于做鉴权和缓存
     //   video_stream: 'https://dev.api.5i03.cn/api/device/snapshot'
-    video_stream: 'https://dev.api.5i03.cn/api/device/snapshot',  // 通过后端 API 代理获取快照
+    video_stream: 'https://dev.api.5i03.cn/api/device/snapshot',
     mqtt: {
       broker: 'mqtt.5i03.cn',
       port: 1883
@@ -105,7 +100,7 @@ module.exports = {
   },
   
   /**
-   * 获取完整的 API 配置
+    * 获取 API 配置
    */
   getApiConfig: () => {
     return {
@@ -143,14 +138,14 @@ module.exports = {
   },
   
   /**
-   * 初始化配置 - 从服务器获取完整配置
-   * 应该在应用启动时调用 (App.onLaunch)
+    * 初始化配置。
+    * 建议在 App.onLaunch 中调用。
    */
   async initConfig() {
     try {
       console.log('[配置] 正在从服务器获取配置...');
       
-      // 检查缓存版本，如果不匹配则清除旧缓存
+      // 版本不一致时清理旧缓存
       try {
         const cachedConfig = wx.getStorageSync('app_config');
         if (cachedConfig && cachedConfig.version !== CONFIG_VERSION) {
@@ -166,23 +161,23 @@ module.exports = {
       const response = await module.exports.fetchConfig(baseUrl + '/config');
       
       if (response && response.success) {
-        // 保存原始的 baseUrl（服务器配置不应该覆盖客户端的 baseUrl）
+        // 保留当前 baseUrl，避免被远端配置覆盖
         const originalBaseUrl = GLOBAL_CONFIG.api.baseUrl;
         
-        // 合并服务器配置到全局配置
+        // 合并服务端配置
         GLOBAL_CONFIG = {
-          version: CONFIG_VERSION,  // 添加版本号
+          version: CONFIG_VERSION,
           ...GLOBAL_CONFIG,
           ...response.data,
-          // 深度合并 api 配置，确保 baseUrl 不被覆盖
+          // 合并 api 字段并保留本地 baseUrl
           api: {
             ...GLOBAL_CONFIG.api,
             ...(response.data.api || {}),
-            baseUrl: originalBaseUrl  // 保留原始的 baseUrl
+            baseUrl: originalBaseUrl
           }
         };
         
-        // 缓存配置到本地存储
+        // 写入本地缓存
         try {
           wx.setStorageSync('app_config', GLOBAL_CONFIG);
           wx.setStorageSync('app_config_time', Date.now());
@@ -198,17 +193,17 @@ module.exports = {
     } catch (e) {
       console.warn('从服务器获取配置失败，使用本地缓存或默认配置', e);
       
-      // 尝试读取本地缓存
+      // 回退到本地缓存
       try {
         const cachedConfig = wx.getStorageSync('app_config');
         if (cachedConfig) {
-          // 保存原始的 baseUrl
+          // 保留当前 baseUrl
           const originalBaseUrl = GLOBAL_CONFIG.api.baseUrl;
           
           GLOBAL_CONFIG = {
-            version: CONFIG_VERSION,  // 添加版本号
+            version: CONFIG_VERSION,
             ...cachedConfig,
-            // 确保 baseUrl 不被缓存覆盖
+            // 缓存回读时也保持当前 baseUrl
             api: {
               ...(cachedConfig.api || {}),
               baseUrl: originalBaseUrl
@@ -296,6 +291,6 @@ module.exports = {
     }
     
     config[keys[keys.length - 1]] = value;
-    console.log(`✏️ 配置已更新: ${path} = ${value}`);
+        console.log(`配置已更新: ${path} = ${value}`);
   }
 };

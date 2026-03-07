@@ -386,40 +386,29 @@ Page({
   },
 
   /**
-   * 扫码添加设备（申请-审批流）
-   * 
-   * 业务流程：
-   * 1. 调用微信扫码 API
-   * 2. 从二维码中提取 MAC 地址
-   * 3. 弹出确认框
-   * 4. 提交申请到后端 POST /api/user/apply_device
-   * 5. 提示用户等待管理员审批
+   * 扫码后发起设备绑定申请。
    */
   handleScanCode() {
     wx.scanCode({
-      onlyFromCamera: true,  // 只允许从相机扫码
-      scanType: ['qrCode'],  // 只支持二维码
+      onlyFromCamera: true,  // 仅使用相机扫码
+      scanType: ['qrCode'],  // 仅处理二维码
       success: (res) => {
         console.log('扫码成功:', res);
         
-        // 从扫码结果中提取 MAC 地址
+        // 从扫码结果提取 MAC
         const result = res.result;
         let macAddress = '';
         
-        // 尝试从完整 URL 或纯文本中提取 MAC 地址
-        // 支持格式：
-        // 1. http://example.com?mac=AA:BB:CC:DD:EE:FF
-        // 2. AA:BB:CC:DD:EE:FF
-        // 3. AA-BB-CC-DD-EE-FF
+        // 同时支持 URL 参数和纯 MAC 文本
         
         if (result.includes('mac=')) {
-          // 从 URL 参数中提取
+          // URL 中提取
           const match = result.match(/mac=([0-9A-Fa-f:]{17}|[0-9A-Fa-f-]{17})/);
           if (match) {
             macAddress = match[1];
           }
         } else {
-          // 直接是 MAC 地址
+          // 纯 MAC 文本
           const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
           if (macRegex.test(result)) {
             macAddress = result;
@@ -435,7 +424,7 @@ Page({
           return;
         }
         
-        // 弹出确认框
+        // 二次确认后再提交申请
         wx.showModal({
           title: '申请绑定设备',
           content: `是否申请绑定设备 ${macAddress}？\n\n提交后需要等待管理员审批。`,
@@ -451,7 +440,7 @@ Page({
       fail: (err) => {
         console.error('扫码失败:', err);
         if (err.errMsg.includes('cancel')) {
-          // 用户取消扫码，不提示
+          // 用户主动取消时不提示
           return;
         }
         wx.showToast({

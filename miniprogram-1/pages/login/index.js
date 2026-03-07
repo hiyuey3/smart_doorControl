@@ -160,24 +160,16 @@ Page({
 
         if (res.statusCode === 200 && res.data && res.data.success) {
           //  登录成功
-          // 关键：先清除旧数据，再保存新数据，防止账号切换时数据混乱
+          // 先清理旧登录态，避免切换账号时残留旧数据
           wx.removeStorageSync('token');
           wx.removeStorageSync('userInfo');
           
-          // 关键修复：安全访问响应数据 res.data.data
-          // 原因：防止响应格式异常导致 undefined 错误
-          // 示例场景：
-          //   修复前：const token = res.data.data.token  ❌ (若data不存在则报错)
-          //   修复后：const responseData = res.data.data || {}   (安全)
+          // 使用兜底对象，避免后端字段缺失时报错
           const responseData = res.data.data || {};
           const token = responseData.token;
           const userInfo = responseData.user || {};
           
-          //  额外的数据有效性检查：确保token不为空
-          // 防线说明：
-          // 1. 后端返回success=true，但token为空（异常情况）
-          // 2. 如果不检查直接保存空token，后续API调用会失败
-          // 3. 提前检查可以提供更好的错误提示
+          // token 是后续接口调用凭证，必须存在
           if (!token) {
             console.error('后端返回的 token 为空');
             wx.hideLoading();
@@ -190,9 +182,7 @@ Page({
             return;
           }
           
-          // 保存token和用户信息到本地存储
-          // token用于后续API认证（Authorization: Bearer {token}）
-          // userInfo用于展示用户信息（姓名、学号等）
+          // 保存登录态
           wx.setStorageSync('token', token);
           wx.setStorageSync('userInfo', userInfo);
 
@@ -219,7 +209,7 @@ Page({
           }, 1500);
 
         } else {
-          // ❌ 后端返回失败（如：账号或密码错误）
+          // 后端返回失败（如账号或密码错误）
           wx.hideLoading();
           console.error('后端返回失败:', res);
           wx.showToast({
@@ -245,20 +235,10 @@ Page({
   },
 
   /**
-   * 通用登录请求处理（微信登录）
-   */
-  /**
    * 微信登录请求处理函数
    * @param {string} code - 微信临时登录凭证（由wx.login()获取）
    * @param {string} username - 可选，学号/工号（用于绑定现有账号）
    * @param {string} password - 可选，密码（用于绑定现有账号）
-   * 
-   * 微信登录流程：
-   * 1. 前端调用 wx.login() → 获取临时code（只能用一次，5分钟内有效）
-   * 2. 将code发送到后端 POST /api/login?login_type=wechat
-   * 3. 后端调用微信API验证code → 获取openid
-   * 4. 后端查询/创建用户 → 签发JWT token
-   * 5. 前端保存token到本地存储 → 跳转到应用主页面
    */
   requestLogin: function(code, username, password) {
     const that = this;
@@ -270,10 +250,10 @@ Page({
       url: apiUrl + '/login',
       method: 'POST',
       data: {
-        login_type: 'wechat',  // 告知后端使用微信登录流程
-        code: code,            // 微信登录凭证
-        username: username || '',  // 可选：用户名（用于绑定）
-        password: password || ''    // 可选：密码（用于绑定）
+        login_type: 'wechat',
+        code: code,
+        username: username || '',
+        password: password || ''
       },
       header: {
         'Content-Type': 'application/json'
@@ -283,18 +263,16 @@ Page({
 
         if (res.statusCode === 200 && res.data && res.data.success) {
           //  微信登录成功
-          // 关键：先清除旧数据，再保存新数据，防止账号切换时数据混乱
+          // 先清理旧登录态，避免切换账号时残留旧数据
           wx.removeStorageSync('token');
           wx.removeStorageSync('userInfo');
           
-          // 关键修复：安全访问响应数据 res.data.data
-          // 防止响应格式异常导致 undefined 错误
+          // 使用兜底对象，避免后端字段缺失时报错
           const responseData = res.data.data || {};
           const token = responseData.token;
           const userInfo = responseData.user || {};
           
-          //  验证token有效性
-          // 重要：token是后续所有API调用的凭证，不能为空
+          // token 是后续接口调用凭证，必须存在
           if (!token) {
             console.error('后端返回的 token 为空');
             wx.hideLoading();

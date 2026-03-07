@@ -6,26 +6,26 @@
 #include "esp_camera.h"
 #include "esp_http_server.h"
 
-// ===== 芯片模型定义 =====
+//芯片模型定义
 #define CAMERA_MODEL_ESP32S3_EYE
 #include "camera_pins.h"
 
-// ===== 引脚配置 =====
+//引脚配置
 #define BOOT_BUTTON_PIN  0    // 启动按钮（长按触发 SmartConfig）
 #define LED_BUILT_IN     2    // 内置 LED（GPIO2，状态指示）
 #define STM_RX_PIN       21   // UART RX：接收来自 STM32 的数据（无摄像头冲突）
 #define STM_TX_PIN       42   // UART TX：发送指令给 STM32（无摄像头冲突）
 
-// ===== MQTT 配置 =====
+//MQTT 配置
 const char* mqtt_server = "mqtt.5i03.cn"; // 基于emqx的开源部署版本
 const int   mqtt_port   = 1883;
 
-// ===== 全局对象 =====
+//全局对象
 HardwareSerial  SerialSTM(1);         // UART1 与 STM32 通信
 WiFiClient      espClient;
 PubSubClient    mqttClient(espClient);
 
-// ===== 全局变量 =====
+//全局变量
 String          mqtt_client_id;
 String          topic_sub;
 String          topic_pub;
@@ -35,9 +35,9 @@ unsigned long   heartbeat_count  = 0;
 volatile int    active_viewers   = 0;
 
 
-// ============================================================
+
 //  摄像头初始化
-// ============================================================
+
 /**
  * 初始化 OV2640 摄像头
  * 引脚由 camera_pins.h 中的宏定义提供
@@ -87,9 +87,9 @@ esp_err_t manage_camera_power(bool enable) {
 }
 
 
-// ============================================================
+
 //  WiFi 初始化
-// ============================================================
+
 /**
  * 尝试连接上次保存的 WiFi（10 秒超时）
  * 失败后启动 SmartConfig，等待手机扫码配网
@@ -128,9 +128,9 @@ void framework_network_init() {
 }
 
 
-// ============================================================
+
 //  UART 串口通信（与 STM32）
-// ============================================================
+
 /**
  * 向 STM32 发送十六进制指令帧
  * 帧格式：| 0xAA | 0x55 | CMD | LEN(0x01) | DATA | CHECKSUM |
@@ -227,9 +227,9 @@ void business_uart_listen() {
 }
 
 
-// ============================================================
+
 //  MQTT 后台任务（运行在 Core 0）
-// ============================================================
+
 /**
  * 维护 MQTT 长连接，断线自动重连
  * LWT（遗言）：设备掉线时自动发布 offline 消息
@@ -265,9 +265,9 @@ void mqtt_task(void* pv) {
 }
 
 
-// ============================================================
+
 //  本地 HTTP 视频流服务（端口 81）
-// ============================================================
+
 /**
  * Motion JPEG 流处理函数
  * URL: http://<ESP32_IP>:81/stream
@@ -345,9 +345,9 @@ void start_httpd() {
 }
 
 
-// ============================================================
+
 //  setup() - 初始化入口
-// ============================================================
+
 void setup() {
   Serial.begin(115200);
 
@@ -396,13 +396,13 @@ void setup() {
   // STEP 4：启动本地视频流服务
   start_httpd();
 
-  Serial.println("\n=== System Ready ===");
+  Serial.println("System Ready");
 }
 
 
-// ============================================================
+
 //  loop() - 主循环
-// ============================================================
+
 void loop() {
   // 持续监听 STM32 UART 数据
   business_uart_listen();

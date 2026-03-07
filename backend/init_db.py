@@ -128,34 +128,33 @@ def init_database(reset_mode=False):
         db.session.commit()
         print(f"   - 设备创建完成 (共5个设备)")
         
-        # 添加权限关联（使用新的 status 字段）
-        # 【多对多示例】学生应用多个设备，每个设备有不同权限状态
+        # 写入用户-设备权限关系（多对多）
         
-        # 1. 学生对教室1的权限已批准
+        # 学生：教室1，已批准
         permission1 = UserDevicePermission(
             user_id=student.id,
             device_mac=device1.mac_address,
-            status='approved'  # 已批准
+            status='approved'
         )
         db.session.add(permission1)
         
-        # 2. 学生对宿舍楼的权限已批准
+        # 学生：宿舍楼，已批准
         permission2 = UserDevicePermission(
             user_id=student.id,
             device_mac=device3.mac_address,
-            status='approved'  # 已批准
+            status='approved'
         )
         db.session.add(permission2)
         
-        # 3. 学生对食堂的权限待审批（展示申请中状态）
+        # 学生：食堂，待审批
         permission_pending = UserDevicePermission(
             user_id=student.id,
             device_mac=device5.mac_address,
-            status='pending'  # 待审批
+            status='pending'
         )
         db.session.add(permission_pending)
         
-        # 4. 管理员拥有所有设备的权限（默认 approved）
+        # 管理员：默认拥有全部设备权限
         for device in [device1, device2, device3, device4, device5]:
             admin_permission = UserDevicePermission(
                 user_id=admin_user.id,
@@ -164,7 +163,7 @@ def init_database(reset_mode=False):
             )
             db.session.add(admin_permission)
         
-        # 5. 宿管对宿舍楼和食堂的权限
+        # 宿管：宿舍楼和食堂
         warden_permission1 = UserDevicePermission(
             user_id=warden_user.id,
             device_mac=device3.mac_address,
@@ -180,7 +179,7 @@ def init_database(reset_mode=False):
         
         db.session.commit()
         print(f"   - 权限关联创建完成")
-        print(f"\n   【多对多映射示例】")
+        print(f"\n   多对多映射示例")
         print(f"   • 学生 {student.name}（ID:{student.id}）关联多个设备：")
         print(f"     ├─ 教室1门禁 - 已批准 [OK]")
         print(f"     ├─ 宿舍楼门禁 - 已批准 [OK]")
@@ -201,7 +200,7 @@ def init_database(reset_mode=False):
         print("\n" + "=" * 60)
         print("=== 数据库初始化完成 ===")
         print("=" * 60)
-        print("\n【测试账户信息】\n")
+        print("\n测试账户信息\n")
         print("1. 学生账号")
         print("   学号：2021001")
         print("   密码：123456")
@@ -219,7 +218,7 @@ def init_database(reset_mode=False):
         print("   密码：admin123")
         print("   访问：http://localhost:5000/admin")
         print("\n" + "=" * 60)
-        print("【多对多权限映射说明】")
+        print("多对多权限映射说明")
         print("=" * 60)
         print("• 一个用户可以绑定多个设备（已批准状态下可控制）")
         print("• 一个设备可以分配给多个用户（不同角色不同权限）")

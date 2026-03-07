@@ -19,35 +19,10 @@ MAC_PATTERN = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
 
 def normalize_mac(mac_raw):
     """
-    统一 MAC 地址格式（全栈标准化）
-    
-    解决问题：ESP32 传来的 MAC 可能带冒号（AA:BB:CC:DD:EE:FF），
-             小程序请求时可能不带冒号（AABBCCDDEEFF），
-             导致后端缓存 Cache MISS。
-    
-    标准化规则：
-    1. 移除所有冒号（:）、短横线（-）、空格
-    2. 转换为全大写
-    3. 验证长度为 12 个字符
-    4. 返回带冒号的标准格式（AA:BB:CC:DD:EE:FF）
-    
-    参数：
-        mac_raw (str): 原始 MAC 地址（任意格式）
-    
-    返回：
-        tuple: (标准化MAC地址, 错误信息)
-               成功：('AA:BB:CC:DD:EE:FF', None)
-               失败：(None, '错误描述')
-    
-    示例：
-        >>> normalize_mac('aa:bb:cc:dd:ee:ff')
-        ('AA:BB:CC:DD:EE:FF', None)
-        >>> normalize_mac('AABBCCDDEEFF')
-        ('AA:BB:CC:DD:EE:FF', None)
-        >>> normalize_mac('AA-BB-CC-DD-EE-FF')
-        ('AA:BB:CC:DD:EE:FF', None)
-        >>> normalize_mac('invalid')
-        (None, 'MAC 地址格式无效')
+    统一 MAC 地址格式。
+
+    支持输入：AA:BB:CC:DD:EE:FF / AA-BB-CC-DD-EE-FF / AABBCCDDEEFF。
+    返回标准格式：AA:BB:CC:DD:EE:FF。
     """
     if not mac_raw:
         return None, '缺少 MAC 地址'
@@ -69,36 +44,8 @@ def normalize_mac(mac_raw):
     return mac_standard, None
 
 
-def _generate_placeholder_jpeg():
-    """
-    生成最小的有效 JPEG 占位符（1x1 灰色像素）
-    这避免了 PIL 依赖，作为降级方案
-    
-    :return: JPEG 二进制数据（约 600 字节）
-    """
-    # 这是一个最小的有效灰色 1x1 像素 JPEG
-    # FFD8 = JPEG SOI marker
-    # FFE0 = JFIF APP0 marker
-    # FFDB = Quantization Table Marker
-    # FFC0 = Start of Frame marker  
-    # FFDA = Start of Scan marker
-    # FFD9 = EOI marker
-    placeholder = (
-        b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00'
-        b'\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff'
-        b'\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00'
-        b'\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b'
-        b'\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd7\xff\xd9'
-    )
-    return placeholder
-
-
-# V3.0 极简 RESTful 路由架构
-# 设计原则：
-# 1) 收敛路由：同一资源使用 HTTP Method + action 区分操作，避免接口爆炸
-# 2) RBAC 动态过滤：前端统一调同一路径，后端按 current_user.role 动态过滤数据
-# 3) 安全默认：关键动作做二次鉴权（BOLA）、硬件上报使用 Device-Secret
-# 工具函数：简化重复逻辑
+# 路由设计：按资源收敛接口，按角色过滤数据，敏感动作默认鉴权。
+# 工具函数：减少重复校验与格式处理。
 def _validate_mac_address(mac_address):
     """
     验证 MAC 地址格式。
@@ -139,10 +86,6 @@ def _normalize_mac_address(mac_address):
 def _build_system_config():
     """
     统一返回系统基础配置。
-
-    架构考量：
-    - 把配置聚合到函数，避免散落在多个接口重复维护。
-    - GET /api/user 一次返回 user + config，减少前端请求数量。
     """
     return {
         'app': {
@@ -172,10 +115,6 @@ def _build_system_config():
 def _issue_jwt(user):
     """
     统一 JWT 签发逻辑。
-
-    架构考量：
-    - 微信登录/密码登录统一复用，保证 payload 一致。
-    - 后续若增加 refresh token 或黑名单，仅需改这一处。
     """
     jwt_expiration_seconds = current_app.config.get('JWT_EXPIRATION', 7 * 24 * 3600)
     exp_time = datetime.utcnow() + timedelta(seconds=jwt_expiration_seconds)
@@ -195,9 +134,6 @@ def _issue_jwt(user):
 def _wechat_code_to_openid(code):
     """
     用微信 code 换 openid。
-
-    架构考量：
-    - 抽成函数，登录和绑定都可复用，避免重复网络逻辑。
     """
     wx_appid = current_app.config.get('WX_APPID')
     wx_appsecret = current_app.config.get('WX_APPSECRET')
@@ -240,11 +176,8 @@ def _wechat_code_to_openid(code):
 def get_system_config():
     """
     获取系统配置信息（公开接口）。
-    
-    架构考量：
-    - 前端 app.js 在启动时调用，不依赖用户登录状态
-    - 返回系统基础配置、功能开关等
-    - 可用于前端动态配置、灰度发布等场景
+
+    该接口用于前端启动阶段拉取基础配置。
     """
     return response_helper.success(
         data=_build_system_config(),
@@ -258,14 +191,7 @@ def get_system_config():
 def login():
     """
     统一登录入口。
-
-    请求示例：
-    - 微信登录: {"login_type":"wechat", "code":"...", "username":"", "password":""}
-    - 密码登录: {"login_type":"password", "username":"20230001", "password":"123456"}
-
-    架构考量：
-    - 用 login_type 区分认证流程，前端只记一个登录 API。
-    - 收敛老接口 /login_password，避免路由分叉。
+    通过 login_type 区分微信登录和账号密码登录，前端统一调用一个接口。
     """
     data = request.get_json(silent=True)
     if data is None:
@@ -277,7 +203,7 @@ def login():
 
     login_type = (data.get('login_type') or '').strip().lower()
 
-    # 分支 A：账号密码登录
+    # 账号密码登录
     if login_type == 'password':
         username = (data.get('username') or '').strip()
         password = (data.get('password') or '').strip()
@@ -313,7 +239,7 @@ def login():
             'message': '登录成功'
         }), 200
 
-    # 分支 B：微信登录
+    # 微信登录流程
     if login_type == 'wechat':
         code = (data.get('code') or '').strip()
         username = (data.get('username') or '').strip()
@@ -328,10 +254,10 @@ def login():
             status = 401 if err_code.startswith('WX_ERR_') else 500
             return jsonify({'success': False, 'message': err_msg, 'error_code': err_code}), status
 
-        # 1) 先按 openid 查已绑定账号
+        # 先看这个 openid 是否已经绑定过账号
         user = User.query.filter_by(openid=openid).first()
 
-        # 2) 找不到时，优先尝试 username+password 绑定已有账号
+        # 如果没绑定过，再尝试把微信绑定到现有账号
         if not user and username and password:
             existing_user = User.query.filter_by(username=username).first()
 
@@ -360,7 +286,7 @@ def login():
             user = existing_user
             db.session.commit()
 
-        # 3) 仍找不到则自动创建微信用户
+        # 还找不到就自动创建一个微信用户
         if not user:
             user = User(
                 openid=openid,
@@ -395,7 +321,7 @@ def login():
     }), 400
 
 
-# 2) 个人资源中心
+# 个人资源中心
 # GET /api/user
 # PUT /api/user
 @bp.route('/user', methods=['GET'])
@@ -403,10 +329,6 @@ def login():
 def get_user_resource():
     """
     获取当前用户聚合资源：用户信息 + 微信绑定状态 + 系统配置。
-
-    架构考量：
-    - 聚合返回，前端一次请求拿全量首屏数据。
-    - 避免多个散接口（/user_info + /wechat_binding_status + /config）。
     """
     current_user = g.current_user
 
@@ -433,16 +355,8 @@ def get_user_resource():
 @token_required
 def update_user_resource():
     """
-    统一处理当前用户修改。
-
-    支持 action:
-    - bind_wechat: 绑定微信
-    - unbind_wechat: 解绑微信
-    - update_info: 更新个人信息（name）
-    - change_password: 修改登录密码
-
-    架构考量：
-    - 用 action 收敛多路由操作，保持接口数量最少。
+    当前用户资料修改入口。
+    通过 action 区分微信绑定、资料更新和密码修改。
     """
     data = request.get_json(silent=True)
     if data is None:
@@ -451,30 +365,25 @@ def update_user_resource():
     action = (data.get('action') or '').strip()
     current_user = g.current_user
 
-    # 分支 A：绑定微信
-    # 分支 A：绑定微信账户
-    # 流程：验证code → 获取openid → 检查冲突 → 保存到数据库 → 返回完整响应
+    # 绑定微信
     if action == 'bind_wechat':
-        # 检查是否已绑定微信，防止重复绑定
+        # 已经绑定过就直接返回
         if current_user.openid:
             return response_helper.bad_request('当前账号已绑定微信', 'ALREADY_BOUND')
 
-        # 提取并验证微信code参数（code由wx.login()生成）
+        # 读取并校验 wx.login() 返回的 code
         code = (data.get('code') or '').strip()
         if not code:
             return response_helper.bad_request('Missing code parameter', 'MISSING_CODE')
 
-        # 调用微信API：code → openid 转换
-        # 微信文档：https://developers.weixin.qq.com/miniprogram/dev/api-backend/open-api/login/auth.code2Session.html
+        # 用 code 换 openid
         openid, err = _wechat_code_to_openid(code)
         if err:
             err_code, err_msg = err
             status = 401 if err_code.startswith('WX_ERR_') else 500
             return response_helper.error(err_msg, err_code, status)
 
-        # 关键安全检查：防止openid被其他用户占用
-        # 场景：用户A、B都希望用同一微信账号登录，应该拒绝
-        # 解决方案：检查openid是否已在系统中存在且属于其他用户
+        # 同一个 openid 只能对应一个账号
         occupied, _ = db_helper.get_by_filter(
             User, 
             **{'openid': openid}
@@ -482,43 +391,41 @@ def update_user_resource():
         if occupied and occupied.id != current_user.id:
             return response_helper.conflict('该微信已绑定其他账号', 'OPENID_OCCUPIED')
 
-        # 保存绑定关系到数据库
+        # 写入绑定关系
         _, error = db_helper.update_and_commit(current_user, openid=openid)
         if error:
             return response_helper.internal_error(f'绑定失败: {error}')
         
-        # 返回完整响应数据（包含is_bound和openid）
-        # 前端需要更新UI状态，所以必须返回data对象
+        # 返回最新绑定状态，前端可直接刷新展示
         return response_helper.success(
             data={
                 'is_bound': True,
-                'openid': openid  # 返回openid，前端用于展示绑定状态
+                'openid': openid
             },
             message='微信绑定成功'
         )
 
-    # 分支 B：解绑微信账户
-    # 流程：检查已绑定 → 清除openid → 返回完整响应
+    # 解绑微信
     if action == 'unbind_wechat':
-        # 检查是否已绑定微信（防止重复解绑）
+        # 原本就没绑定时直接返回
         if not current_user.openid:
             return response_helper.bad_request('当前账号未绑定微信', 'NOT_BOUND')
 
-        # 清除绑定关系（将openid设为NULL）
+        # 清除 openid
         _, error = db_helper.update_and_commit(current_user, openid=None)
         if error:
             return response_helper.internal_error(f'解绑失败: {error}')
         
-        # 返回完整响应数据，前端用于更新UI
+        # 返回解绑后的状态
         return response_helper.success(
             data={
                 'is_bound': False,
-                'openid': None  # 返回None表示未绑定
+                'openid': None
             },
             message='微信解绑成功'
         )
 
-    # 分支 C：更新用户基础信息
+    # 更新基础资料
     if action == 'update_info':
         new_name = (data.get('name') or '').strip()
         if not new_name:
@@ -533,7 +440,7 @@ def update_user_resource():
             message='资料更新成功'
         )
 
-    # 分支 D：修改密码
+    # 修改密码
     if action == 'change_password':
         old_password = (data.get('old_password') or '').strip()
         new_password = (data.get('new_password') or '').strip()
@@ -544,7 +451,7 @@ def update_user_resource():
         if len(new_password) < 6:
             return response_helper.bad_request('新密码长度不能少于6位', 'WEAK_NEW_PASSWORD')
 
-        # 已有密码账号：必须校验旧密码
+        # 有旧密码时要先校验
         if current_user.password:
             if not old_password:
                 return response_helper.bad_request('请输入旧密码', 'MISSING_OLD_PASSWORD')
@@ -561,45 +468,25 @@ def update_user_resource():
     return response_helper.bad_request('不支持的 action', 'INVALID_ACTION')
 
 
-# 3) 设备管控中枢
+# 设备管控
 # GET /api/devices
 # POST /api/devices/<mac_address>/unlock
 @bp.route('/devices', methods=['GET'])
 @token_required
 def get_devices():
     """
-    设备列表统一接口（RBAC 动态过滤 + 多对多支持）。
-    
-    核心逻辑：
-    - admin: 返回全量设备列表
-    - student: 只返回 status='approved' 的授权设备
-    - 前端单一接口调用，后端 SQL 动态完成角色差异过滤
-    
-    返回格式（数组对象）：
-    {
-      "success": true,
-      "data": [
-        {
-          "mac_address": "AA:BB:CC:DD:EE:FF",
-          "name": "教室1门禁",
-          "room_number": "101",
-          "status": "online",      # 设备的在线状态
-          "last_heartbeat": "2026-03-01T10:30:00",
-          "created_at": "2026-02-01T00:00:00"
-        }
-      ],
-      "count": 3
-    }
+    设备列表接口。
+    admin 返回全部设备，普通用户只返回已授权设备。
     """
     current_user = g.current_user
 
     try:
-        # 分支 A：admin 获取全量设备
+        # 管理员看全量设备
         if current_user.role == 'admin':
             devices, error = db_helper.get_all(Device, order_by=Device.mac_address.asc())
             if error:
                 return response_helper.internal_error(f'Query devices failed: {error}')
-        # 分支 B：student/warden 获取已批准的设备（一个用户可以有多个设备）
+        # 非管理员只看自己已批准的设备
         else:
             devices = (
                 db.session.query(Device)
@@ -631,9 +518,7 @@ def unlock_device(mac_address):
     - admin 可直接操作任意设备。
     - 非 admin 必须验证 UserDevicePermission(user_id, device_mac) 存在。
 
-    架构考量：
-    - 将目标设备标识放入 URL（资源导向），避免 body 参数歧义。
-    - 鉴权通过后才下发 MQTT 并写日志，实现“先鉴权后执行”。
+    设备标识走 URL，鉴权通过后再下发 MQTT 并写日志。
     """
     current_user = g.current_user
 
@@ -1092,7 +977,7 @@ def review_application(application_id):
         return response_helper.internal_error(f'Failed to review application: {str(e)}')
 
 
-# 4) 安全审计中枢
+# 安全审计
 # GET /api/logs
 @bp.route('/logs', methods=['GET'])
 @token_required
@@ -1100,28 +985,25 @@ def get_logs():
     """
     统一日志查询接口（RBAC 动态过滤）。
 
-    架构考量：
-    - admin: 查看全楼日志。
-    - student: 只看“本人日志 + 本人有权限设备日志”。
-    - 前端不需要区分 /admin_logs 与 /user_logs。
+    admin 查看全量；普通用户仅查看本人相关日志。
     """
     current_user = g.current_user
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
     try:
-        # 分支 A：admin 查看全量日志
+        # 管理员查看全量日志
         if current_user.role == 'admin':
             query = Log.query
-        # 分支 B：student 动态拼装过滤条件
+        # 普通用户只看和自己相关的日志
         else:
-            # 子查询：当前用户有权限的设备 MAC 列表
+            # 先取出当前用户有权限的设备列表
             permitted_macs_query = (
                 db.session.query(UserDevicePermission.device_mac)
                 .filter(UserDevicePermission.user_id == current_user.id)
             )
 
-            # 过滤策略：本人操作日志 或 本人授权设备日志
+            # 过滤本人操作日志，以及本人有权限设备的日志
             query = Log.query.filter(
                 (Log.user_id == current_user.id) | 
                 (Log.mac_address.in_(permitted_macs_query))
@@ -1147,32 +1029,22 @@ def get_logs():
         return response_helper.internal_error(f'Failed to get logs: {str(e)}')
 
 
-# 5) 宿管专属管理
+# 宿管管理
 # GET /api/users
 # POST /api/users
 @bp.route('/users', methods=['GET', 'POST'])
 @token_required
 def users_admin():
     """
-    宿管管理入口（仅 admin）。
-
-    GET:
-    - 拉取全楼人员名单。
-
-    POST:
-    - action=create_user: 新增用户
-    - action=force_unbind_wechat: 强制解绑某用户微信
-
-    架构考量：
-    - 用同一路径 + Method + action 收敛管理动作。
-    - 保证管理权限统一拦截。
+    宿管管理入口，仅 admin 可访问。
+    GET 拉取用户列表，POST 处理创建用户和强制解绑微信。
     """
-    # 权限检查
+    # 先做管理员权限校验
     error = permission_helper.require_admin()
     if error:
         return response_helper.error(error[0]['message'], error[0]['error_code'], error[1])
 
-    # GET: 管理员查看全员列表
+    # GET: 查询用户列表
     if request.method == 'GET':
         try:
             users, error = db_helper.get_all(User, order_by=User.id.desc())
@@ -1187,14 +1059,14 @@ def users_admin():
             current_app.logger.error(f'Get users error: {e}')
             return response_helper.internal_error(f'Failed to get users: {str(e)}')
 
-    # POST: 管理动作
+    # POST: 处理管理动作
     data = request.get_json(silent=True)
     if data is None:
         return response_helper.bad_request('Invalid JSON body', 'INVALID_JSON')
 
     action = (data.get('action') or '').strip()
 
-    # 分支 A：新增用户
+    # 新增用户
     if action == 'create_user':
         username = (data.get('username') or '').strip()
         password = (data.get('password') or '').strip()
@@ -1219,7 +1091,7 @@ def users_admin():
             message='用户创建成功'
         )
 
-    # 分支 B：强制解绑微信
+    # 强制解绑微信
     if action == 'force_unbind_wechat':
         username = (data.get('username') or '').strip()
         user_id = data.get('user_id')
@@ -1252,49 +1124,7 @@ def users_admin():
 
 
 # 6) 边缘硬件上报
-# POST /api/hardware/snapshot
-@bp.route('/hardware/snapshot', methods=['POST'])
-def hardware_snapshot():
-    """ESP32-S3 抓拍上传。需要 Device-Secret 请求头认证。"""
-    # 设备密钥校验
-    request_secret = (request.headers.get('Device-Secret') or '').strip()
-    expected_secret = current_app.config.get('DEVICE_SECRET') or os.getenv('DEVICE_SECRET', 'esp32_demo_secret')
 
-    if not request_secret or request_secret != expected_secret:
-        return response_helper.unauthorized('设备密钥无效', 'DEVICE_AUTH_FAILED')
-
-    event_id = request.form.get('event_id') or request.args.get('event_id')
-    if not event_id:
-        return response_helper.bad_request('缺少 event_id', 'MISSING_EVENT_ID')
-
-    file = request.files.get('file')
-    file_data = file.read() if file else request.data
-
-    if not file_data:
-        return response_helper.bad_request('无文件数据', 'EMPTY_PAYLOAD')
-
-    try:
-        uploads_dir = os.path.join(bp.root_path, '..', 'static', 'images')
-        os.makedirs(uploads_dir, exist_ok=True)
-
-        filename = f"{event_id}.jpg"
-        filepath = os.path.join(uploads_dir, filename)
-
-        with open(filepath, 'wb') as f:
-            f.write(file_data)
-
-        # 如果日志存在，更新截图 URL
-        log_entry, _ = db_helper.get_by_filter(Log, event_id=event_id)
-        if log_entry:
-            db_helper.update_and_commit(log_entry, snapshot_url=f"images/{filename}")
-
-        return response_helper.success(
-            data={'filename': filename, 'snapshot_url': f"images/{filename}"},
-            message='上传成功'
-        )
-    except Exception as e:
-        current_app.logger.error(f'Snapshot upload error: {e}')
-        return response_helper.internal_error(f'上传失败: {str(e)}')
 
 
 # 7) 设备动作下发
@@ -1318,7 +1148,7 @@ def device_action():
 
     # 权限检查
     error_resp = permission_helper.check_device_access(current_user, mac_address)
-    if error_resp[0]:  # 检查是否有错误（error_resp返回 (error_dict, status_code) 或 (None, None)）
+    if error_resp[0]:
         return response_helper.error(error_resp[0]['message'], error_resp[0]['error_code'], error_resp[1])
 
     # 兼容历史脏数据：权限已存在但 devices 表缺记录时，自动补齐离线占位设备
@@ -1338,17 +1168,16 @@ def device_action():
         else:
             device = created_device
 
-    # 动作映射：前端action_type → ESP32命令名
-    # 注意：ESP32订阅 /iot/device/{mac}/down，期望的cmd格式如下
+    # 前端 action_type -> ESP32 cmd
+    # ESP32 订阅主题：/iot/device/{mac}/down
     actions = {
-        'open_door': 'open_door',      # 开门（修正：ESP32期望 'open_door' 而非 'open'）
+        'open_door': 'open_door',
         'keep_open': 'keep_open',      # 常开模式
-        'cam_ctrl': 'cam_ctrl',  # 门禁模式
+        'cam_ctrl': 'cam_ctrl',
         'alarm': 'alarm',              # 报警
-        'light': 'led_control',           # 摄像头控制（使用cam_trl命令）
-        'query_status': 'query_status',# 查询状态
-        'reboot': 'reboot',        # 重启
-        # 'test_led':'test_led'         # 测试ESP 32LED
+        'light': 'led_control',
+        'query_status': 'query_status',
+        'reboot': 'reboot',
     }
 
     cmd = actions.get(action_type)
@@ -1422,41 +1251,23 @@ def unbind_device(mac):
 @token_required
 def proxy_device_stream(mac_address):
     """
-    实时视频流代理接口（纯转发，不落地存储）
-    
-    架构设计：
-    - ESP32在局域网内开启HTTP视频服务器（通常 :81端口）
-    - Flask作为反向代理，转发ESP32的MJPEG流
-    - 小程序通过Flask统一入口访问，支持权限校验
-    - 不存数据库，不占用服务器存储
-    
-    使用场景：
-    - 公网访问局域网设备（Flask部署在公网，ESP32在内网）
-    - 统一鉴权（所有访问通过JWT验证）
-    - 跨域问题解决（小程序只需配置Flask域名）
-    
-    请求示例：
-    GET /api/device/stream/AA:BB:CC:DD:EE:FF
-    Headers:
-      Authorization: Bearer <jwt_token>
-    
-    响应：MJPEG流（multipart/x-mixed-replace）
+        实时视频流代理接口（仅转发，不落库）。
     """
     current_user = g.current_user
     
-    # 1. 验证设备权限（BOLA防护）
+    # 先做设备访问权限校验
     error = permission_helper.check_device_access(current_user, mac_address)
     if error:
         return response_helper.error(error[0]['message'], error[0]['error_code'], error[1])
     
-    # 2. 查询设备信息
+    # 查询设备
     device, error = db_helper.get_by_filter(Device, mac_address=mac_address)
     if error:
         return response_helper.internal_error(f'Query device failed: {error}')
     if not device:
         return response_helper.not_found('设备不存在', 'DEVICE_NOT_FOUND')
     
-    # 3. 检查设备在线状态
+    # 设备离线时直接返回
     if device.status != 'online':
         return response_helper.error(
             '设备离线，无法获取视频流',
@@ -1464,29 +1275,28 @@ def proxy_device_stream(mac_address):
             503
         )
     
-    # 4. 获取ESP32视频流地址
-    # 方式A：从环境变量/配置文件读取（推荐）
+    # 从配置读取视频流地址
     stream_url = current_app.config.get('DEVICE_STREAM_URL_TEMPLATE', 'http://192.168.3.161:81/stream')
     
-    # 方式B：从Device模型读取（需要先在数据库表中添加stream_url字段）
+    # 也可以改为从设备表读取 stream_url
     # stream_url = getattr(device, 'stream_url', None)
     # if not stream_url:
     #     return response_helper.not_found('设备未配置视频流地址', 'STREAM_URL_NOT_CONFIGURED')
     
     try:
-        # 5. 反向代理ESP32视频流
+        # 反向代理上游视频流
         current_app.logger.info(f'Proxying stream from {stream_url} for user {current_user.id}')
         
-        # 使用requests.get()流式读取ESP32的响应
+        # 流式读取上游响应
         upstream = requests.get(
             stream_url,
             stream=True,  # 启用流式传输
             timeout=30
         )
         
-        # 6. 流式响应给小程序（使用Flask的stream_with_context）
+        # 再流式返回给小程序
         def generate():
-            """生成器函数：逐块读取ESP32数据并转发"""
+            """逐块转发上游数据。"""
             try:
                 for chunk in upstream.iter_content(chunk_size=1024):
                     if chunk:
@@ -1516,258 +1326,6 @@ def proxy_device_stream(mac_address):
         return response_helper.internal_error(f'视频流代理失败: {str(e)}')
 
 
-@bp.route('/device/snapshot/<mac_address>', methods=['GET'])
-@token_required
-def proxy_device_snapshot(mac_address):
-    """
-    实时快照获取接口 - 支持三层快照源优先级
-    
-    优先级架构：
-    1. 云端中继（最优，高可用性）：CLOUD_RELAY_SNAPSHOT_URL 配置
-    2. 内存缓存 device_frames（次优，由ESP32主动推送）
-    3. 本地ESP32直连（备选，用于开发测试）
-    
-    V3.1 重要变更：统一返回 JSON 格式的 Base64 编码数据
-    - 解决微信小程序 Base64 渲染黑屏问题
-    - 后端强制去除换行符，前端额外清理（双重保险）
-    
-    请求示例：
-    GET /api/device/snapshot/ACA704260CFC
-    
-    响应格式：
-    {
-      "success": true,
-      "data": {
-        "image_base64": "...",  # 纯净的Base64字符串（无换行符）
-        "source": "cache",      # 数据来源
-        "frame_age": 1.2        # 快照年龄（秒）
-      }
-    }
-    """
-    import base64
-    from app import device_frames
-    from time import time
-    
-    current_user = g.current_user
-    
-    # 使用统一的 MAC 地址标准化函数（避免 Cache MISS）
-    mac_standard, error = normalize_mac(mac_address)
-    if error:
-        return response_helper.bad_request(f'MAC 地址格式错误: {error}', 'INVALID_MAC_FORMAT')
-    
-    current_app.logger.info(f'[Snapshot] Request for {mac_address} -> {mac_standard}')
-    
-    # 1. 验证权限
-    error_resp = permission_helper.check_device_access(current_user, mac_standard)
-    if error_resp[0]:
-        return response_helper.error(error_resp[0]['message'], error_resp[0]['error_code'], error_resp[1])
-    
-    # 2. 查询设备
-    device, error = db_helper.get_by_filter(Device, mac_address=mac_standard)
-    if error or not device:
-        return response_helper.not_found('设备不存在', 'DEVICE_NOT_FOUND')
-    
-    # 优先级1：尝试云端中继快照获取（推荐方案）
-    cloud_relay_url = current_app.config.get('CLOUD_RELAY_SNAPSHOT_URL')
-    if cloud_relay_url:
-        try:
-            print(f'[Snapshot] Trying cloud relay from {cloud_relay_url}')
-            response = requests.get(cloud_relay_url, timeout=3)
-            response.raise_for_status()
-            print(f'[Snapshot] Got cloud relay snapshot ({len(response.content)} bytes)')
-            
-            # 转换为 Base64（无换行符）
-            base64_data = base64.b64encode(response.content).decode('utf-8')
-            return response_helper.success(
-                data={
-                    'image_base64': base64_data,
-                    'source': 'cloud-relay',
-                    'size': len(response.content)
-                },
-                message='快照获取成功'
-            )
-        except Exception as e:
-            print(f'[Snapshot] Cloud relay failed, falling back to cache/local: {e}')
-    
-    # 优先级2：尝试从内存缓存获取最新的快照（由ESP32主动推送）
-    if mac_standard in device_frames:
-        frame_data = device_frames[mac_standard]
-        current_time = time()
-        frame_age = current_time - frame_data.get('timestamp', 0)
-        
-        # 如果快照在5分钟以内，直接返回
-        if frame_age < 300:  # 300 秒 = 5 分钟
-            print(f'[Snapshot] Cache HIT for {mac_standard} (age: {frame_age:.1f}s)')
-            
-            # 转换为 Base64（无换行符）
-            base64_data = base64.b64encode(frame_data['data']).decode('utf-8')
-            return response_helper.success(
-                data={
-                    'image_base64': base64_data,
-                    'source': 'cache',
-                    'frame_age': round(frame_age, 2),
-                    'size': frame_data.get('size', len(frame_data['data']))
-                },
-                message='快照获取成功'
-            )
-        else:
-            # 快照过期，从字典中移除
-            del device_frames[mac_standard]
-    
-    # 优先级3：缓存miss - 回退到本地ESP32直连（降级方案）
-    print(f'[Snapshot] Cache MISS for {mac_standard}, falling back to local ESP32')
-    
-    if device.status != 'online':
-        print(f'[Snapshot] Device offline, returning placeholder for {mac_standard}')
-        placeholder = _generate_placeholder_jpeg()
-        base64_data = base64.b64encode(placeholder).decode('utf-8')
-        return response_helper.success(
-            data={
-                'image_base64': base64_data,
-                'source': 'placeholder-offline',
-                'size': len(placeholder)
-            },
-            message='设备离线，返回占位符'
-        )
-    
-    # 优先从数据库获取设备的IP地址，否则使用默认配置
-    device_ip = device.ip_address or '192.168.3.161'
-    snapshot_url = f'http://{device_ip}:81/stream?action=snapshot'
-    print(f'[Snapshot] Using device IP: {device_ip}')
-    
-    try:
-        # 从本地ESP32代理快照（2秒超时）
-        print(f'[Snapshot] Requesting local ESP32 from {snapshot_url}')
-        response = requests.get(snapshot_url, timeout=2)
-        response.raise_for_status()
-        
-        print(f'[Snapshot] Got local ESP32 snapshot from {device_ip} ({len(response.content)} bytes)')
-        
-        # 转换为 Base64（无换行符）
-        base64_data = base64.b64encode(response.content).decode('utf-8')
-        return response_helper.success(
-            data={
-                'image_base64': base64_data,
-                'source': 'esp32-local',
-                'device_ip': device_ip,
-                'size': len(response.content)
-            },
-            message='快照获取成功'
-        )
-        
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout) as e:
-        print(f'[Snapshot] TIMEOUT for {mac_standard}: {e}')
-        # 返回占位符而非 503
-        placeholder = _generate_placeholder_jpeg()
-        base64_data = base64.b64encode(placeholder).decode('utf-8')
-        return response_helper.success(
-            data={
-                'image_base64': base64_data,
-                'source': 'placeholder-timeout',
-                'size': len(placeholder)
-            },
-            message='设备超时，返回占位符'
-        )
-    except requests.exceptions.RequestException as e:
-        print(f'[Snapshot] ERROR for {mac_standard}: {e}')
-        # 返回占位符而非 503
-        placeholder = _generate_placeholder_jpeg()
-        base64_data = base64.b64encode(placeholder).decode('utf-8')
-        return response_helper.success(
-            data={
-                'image_base64': base64_data,
-                'source': 'placeholder-error',
-                'size': len(placeholder)
-            },
-            message='设备错误，返回占位符'
-        )
 
 
 
-# 新增：HTTP 推送模型 - 设备主动上传快照
-
-@bp.route('/device/upload_snapshot', methods=['POST'])
-def upload_device_snapshot():
-    """
-    设备主动上传快照接口 - HTTP 推送模型
-    
-    使用场景：
-    - ESP32 每隔 500ms ~ 1s 主动推送最新快照到此接口
-    - 后端将快照存储在内存字典 device_frames
-    - 前端定期从 GET /api/device/snapshot/<mac> 拉取
-    
-    优势：
-    1. 解决 503 问题：ESP32 不再被动响应频繁请求，而是主动推送
-    2. 低延迟：快照总是最新的，存在内存中
-    3. 负载均衡：ESP32 可以自主控制上传频率，避免被打垮
-    4. 前端友好：可以缓存快照，减少网络请求
-    
-    请求头要求：
-    - X-Device-MAC: 设备 MAC 地址（格式：AA:BB:CC:DD:EE:FF 或 AABBCCDDEEFF）
-    - X-Device-Secret: 设备密钥（可选，用于防止未授权上传）
-    
-    请求体：
-    - Binary JPEG image data (Content-Type: image/jpeg)
-    
-    示例（curl）：
-    curl -X POST http://backend:5000/api/device/upload_snapshot \\
-      -H "X-Device-MAC: 26:05:AF:97:BE:47" \\
-      -H "X-Device-Secret: device_secret_key" \\
-      -H "Content-Type: image/jpeg" \\
-      --data-binary @snapshot.jpg
-    """
-    from app import device_frames, device_frames_lock
-    from time import time
-    
-    try:
-        # 1. 从 Header 获取 MAC 地址
-        mac_raw = request.headers.get('X-Device-MAC', '').strip()
-        if not mac_raw:
-            return response_helper.bad_request('缺少 X-Device-MAC 请求头', 'MISSING_DEVICE_MAC')
-        
-        # 标准化 MAC 地址格式（统一格式，避免 Cache MISS）
-        mac_standard, error = normalize_mac(mac_raw)
-        if error:
-            return response_helper.bad_request(f'MAC 地址格式错误: {error}', 'INVALID_MAC_FORMAT')
-        
-        current_app.logger.info(f'[Snapshot] Upload request from {mac_raw} -> {mac_standard}')
-        
-        # 2. 验证设备是否存在（可选，取决于是否需要严格鉴权）
-        device, error = db_helper.get_by_filter(Device, mac_address=mac_standard)
-        if error or not device:
-            # 可以选择直接拒绝，或允许设备自注册
-            current_app.logger.warning(f'Snapshot upload from unknown device: {mac_standard}')
-            # return response_helper.not_found('设备不存在', 'DEVICE_NOT_FOUND')
-        
-        # 3. 获取二进制数据
-        frame_data = request.get_data()
-        if not frame_data:
-            return response_helper.bad_request('请求体为空', 'EMPTY_BODY')
-        
-        # 4. 线程安全地更新设备帧数据
-        with device_frames_lock:
-            device_frames[mac_standard] = {
-                'data': frame_data,
-                'timestamp': time(),
-                'size': len(frame_data)
-            }
-        
-        # 5. 同时更新设备的在线状态（如果数据库中存在该设备）
-        if device:
-            device.status = 'online'
-            device.last_heartbeat = datetime.utcnow()
-            db.session.commit()
-        
-        current_app.logger.info(f'[Snapshot] OK: Snapshot uploaded: {mac_standard} ({len(frame_data)} bytes)')
-        
-        # 6. 返回成功响应
-        return response_helper.success(
-            data={'mac_address': mac_standard, 'size': len(frame_data)},
-            message='快照已上传'
-        )
-        
-    except Exception as e:
-        current_app.logger.error(f'Snapshot upload error: {str(e)}')
-        import traceback
-        traceback.print_exc()
-        return response_helper.error('Snapshot upload failed', 'SNAPSHOT_UPLOAD_FAILED', 500)

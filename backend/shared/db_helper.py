@@ -21,7 +21,7 @@ class DatabaseHelper:
             **filters: 过滤条件 (key=value)
             
         Returns:
-            tuple: (record, None) 成功 或 (None, error_message) 失败
+            元组： (record, None) 成功 或 (None, error_message) 失败
         """
         try:
             query = select(model_class).filter_by(**filters)
@@ -41,7 +41,7 @@ class DatabaseHelper:
             record_id: 主键值
             
         Returns:
-            tuple: (record, None) 成功 或 (None, error_message) 失败
+            元组： (record, None) 成功 或 (None, error_message) 失败
         """
         try:
             record = db.session.get(model_class, record_id)
@@ -59,7 +59,7 @@ class DatabaseHelper:
             model_class: SQLAlchemy 模型类
             
         Returns:
-            tuple: (records_list, None) 成功 或 ([], error_message) 失败
+            元组： (records_list, None) 成功 或 ([], error_message) 失败
         """
         try:
             query = select(model_class)
@@ -78,7 +78,7 @@ class DatabaseHelper:
             instance: 数据库实例对象
             
         Returns:
-            tuple: (instance, None) 成功 或 (None, error_message) 失败
+            元组： (instance, None) 成功 或 (None, error_message) 失败
         """
         try:
             db.session.add(instance)
@@ -100,7 +100,7 @@ class DatabaseHelper:
             **updates: 要更新的字段值
             
         Returns:
-            tuple: (instance, None) 成功 或 (None, error_message) 失败
+            元组： (instance, None) 成功 或 (None, error_message) 失败
         """
         try:
             for key, value in updates.items():
@@ -123,7 +123,7 @@ class DatabaseHelper:
             instance: 数据库实例对象
             
         Returns:
-            tuple: (True, None) 成功 或 (False, error_message) 失败
+            元组： (True, None) 成功 或 (False, error_message) 失败
         """
         try:
             db.session.delete(instance)
@@ -144,7 +144,7 @@ class DatabaseHelper:
             instances: 实例列表
             
         Returns:
-            tuple: (instances, None) 成功 或 ([], error_message) 失败
+            元组： (instances, None) 成功 或 ([], error_message) 失败
         """
         try:
             db.session.add_all(instances)

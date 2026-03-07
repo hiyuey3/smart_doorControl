@@ -89,7 +89,7 @@
   <view class="modal-dialog" catchtap="stopPropagation">
     <view class="modal-header">
       <text class="modal-title">确认添加设备</text>
-      <text class="modal-close" bindtap="hideBindDialog">✕</text>
+      <text class="modal-close" bindtap="hideBindDialog">×</text>
     </view>
     
     <view class="modal-body">

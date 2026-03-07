@@ -218,11 +218,6 @@ Page({
   /**
    * 向后端提交微信绑定请求
    * @param {string} code - 微信登录凭证（由wx.login()生成，5分钟有效）
-   * 
-   * 流程说明：
-   * 1. 将code发送到后端 POST /api/user
-   * 2. 后端验证code、获取openid、保存绑定关系
-   * 3. 前端接收响应，更新UI显示绑定状态
    */
   requestBindWechat(code) {
     const apiUrl = envConfig.getApiUrl();
@@ -245,18 +240,15 @@ Page({
 
         if (res.statusCode === 200 && res.data && res.data.success) {
           //  绑定成功
-          // 关键修复：安全访问响应数据 res.data.data
-          // 原因：防止后端响应格式异常导致 undefined 错误
-          // 修复前：const openid = res.data.data.openid  ❌ (若data不存在则报错)
-          // 修复后：const responseData = res.data.data || {}   (安全访问)
+          // 使用兜底对象，避免响应字段缺失时报错
           const responseData = res.data.data || {};
           
-          // 更新UI状态，反映微信绑定状态
+          // 更新绑定状态展示
           this.setData({
             wechatBindingStatus: {
-              // 使用后端返回的is_bound字段，若不存在则默认为true（因为执行成功）
+              // 后端未返回 is_bound 时，按成功分支视为已绑定
               is_bound: responseData.is_bound !== undefined ? responseData.is_bound : true,
-              // 保存openid用于展示已绑定哪个微信（通常只显示后4位）
+              // openid 仅用于展示
               openid: responseData.openid || null
             }
           });
@@ -268,14 +260,14 @@ Page({
             duration: 1500
           });
         } else if (res.statusCode === 400) {
-          // ❌ 客户端错误（如：已经绑定过微信）
+          // 客户端错误（如已经绑定过微信）
           wx.showToast({
             title: res.data?.message || '已绑定微信',
             icon: 'none',
             duration: 1500
           });
         } else if (res.statusCode === 401) {
-          // ❌ 认证失败（token过期）
+          // 认证失败（token 过期）
           wx.removeStorageSync('token');
           wx.showToast({
             title: '登录已过期',
@@ -288,7 +280,7 @@ Page({
             });
           }, 1500);
         } else {
-          // ❌ 其他错误（5xx服务器错误等）
+          // 其他错误（例如 5xx 服务器错误）
           wx.showToast({
             title: res.data?.message || '绑定失败',
             icon: 'none',
@@ -297,7 +289,7 @@ Page({
         }
       },
       fail: (err) => {
-        // ❌ 网络错误（无法连接到后端）
+        // 网络错误（无法连接到后端）
         wx.hideLoading();
         console.error(' 绑定网络错误 ', err);
         wx.showToast({

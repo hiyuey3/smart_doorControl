@@ -1,7 +1,5 @@
-// utils/request.js
-// 封装全局 wx.request，统一处理 JWT Token 携带和 401 登录拦截
+// 全局请求封装：统一处理 Token 和 401 跳转。
 
-// 导入环境配置
 const envConfig = require('../config/env.js');
 
 /**
@@ -15,24 +13,24 @@ const envConfig = require('../config/env.js');
  */
 const request = (options) => {
   return new Promise((resolve, reject) => {
-    // 从本地存储获取 Token
+    // 读取本地 token
     const token = wx.getStorageSync('token');
 
-    // 构建完整的请求头
+    // 组装请求头
     const header = {
       'Content-Type': 'application/json',
       ...options.header
     };
 
-    // 如果有 Token，添加到 Authorization 头中
+    // 自动携带 token
     if (token) {
       header['Authorization'] = `Bearer ${token}`;
     }
 
-    // 获取 API 基础 URL
+    // 获取 API 地址
     const apiUrl = envConfig.getApiUrl();
 
-    // 记录请求信息（调试模式）
+    // 调试日志：请求
     if (envConfig.isDebug()) {
       console.log('API Request:', {
         url: apiUrl + options.url,
@@ -41,7 +39,7 @@ const request = (options) => {
       });
     }
 
-    // 发起网络请求
+    // 发起请求
     wx.request({
       url: apiUrl + options.url,
       method: options.method || 'GET',
@@ -49,7 +47,7 @@ const request = (options) => {
       header: header,
       timeout: envConfig.getConfig().timeout,
       success: (res) => {
-        // 记录响应信息（调试模式）
+        // 调试日志：响应
         if (envConfig.isDebug()) {
           console.log('API Response:', {
             url: apiUrl + options.url,
@@ -58,20 +56,18 @@ const request = (options) => {
           });
         }
 
-        // 检查是否为 401 未授权错误
+        // 登录失效时清理会话并跳转登录页
         if (res.statusCode === 401) {
-          // 清除本地 Token
           wx.removeStorageSync('token');
           wx.removeStorageSync('user');
 
-          // 弹出提示
           wx.showToast({
             title: '登录已过期，请重新登录',
             icon: 'none',
             duration: 2000
           });
 
-          // 延迟跳转到登录页面，避免多次调用
+          // 延迟跳转，避免短时间重复导航
           setTimeout(() => {
             wx.navigateTo({
               url: '/pages/login/index'
